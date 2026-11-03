@@ -1,6 +1,6 @@
 // Nibe legacy-bus 0xC0 parameter table.
-// Faithful C++ port of src/nibemote/params.py (PARAMS) — keep both in sync!
-// Protocol details: Elektronikforumet thread t=13714 (FredRovers' spec).
+// Ported from the original Python parameter map (FredRovers' index list in
+// Elektronikforumet thread t=13714). See docs/PROTOCOL-SPEC.md.
 #pragma once
 
 #include <cstddef>

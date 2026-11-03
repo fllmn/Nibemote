@@ -7,14 +7,19 @@ panel. All parameters are exposed as native ESPHome entities (Home Assistant
 via the ESPHome integration — the old MQTT bridge is no longer needed).
 
 Everything here was developed and tested **before the hardware arrived** using
-ESPHome's host build plus a simulated VVM300 master (`sim/vvm300_sim.py`).
+ESPHome's host build plus a simulated VVM300 master (`simulator/vvm300_sim.py`).
 
 ```
-components/nibe/     ESPHome external component (C++ port of protocol.py + client.py)
-  nibe.h/.cpp        legacy bus parser + poll/ENQ exchange state machine
-  param_table.h      0xC0 parameter table (port of params.py)
+components/nibe/     ESPHome external component (C++ port of the original
+                     Python implementation — see docs/PROTOCOL-SPEC.md and
+                     the git history)
+  nibe_protocol.h    wire constants + checksum helper
+  nibe.h/.cpp        hub: lifecycle, config, poll/ENQ exchange
+  nibe_parser.cpp    byte-stream parser + inbound frame handling
+  nibe_entities.h/.cpp  entity classes + parameter decode/encode
+  param_table.h      0xC0 parameter table (from the t=13714 forum list)
   sensor.py          platform: sensor   (parameter: 0xNN)
-  text_sensor.py     platform: text_sensor (parameter: or display_row: 1..3)
+  text_sensor.py     platform: text_sensor (parameter: or display_row: 1..4)
   number.py          platform: number   (parameter:, or knob: true)
   select.py          platform: select   (parameter: + options:)
   button.py          platform: button   (code: 0x01 back, 0x02 next, 0x04 enter)
@@ -23,7 +28,7 @@ esphome/
   nibemote-host.yaml host build for protocol simulation (no hardware)
   nibe-entities.yaml entity list (shared by both configs, via packages)
   secrets.yaml.example  copy to secrets.yaml, fill in wifi
-sim/vvm300_sim.py    simulated VVM300 CPU (bus master) over TCP
+simulator/vvm300_sim.py  simulated VVM300 CPU (bus master) over TCP
 ```
 
 ## Setup
@@ -43,7 +48,7 @@ TCP UART:
 
 ```bash
 .venv-esphome/bin/esphome run esphome/nibemote-host.yaml   # terminal 1
-python3 sim/vvm300_sim.py                                   # terminal 2
+python3 simulator/vvm300_sim.py                                   # terminal 2
 ```
 
 The simulator plays the VVM300 CPU: boot polls, the 0x22 boot ping, the 0x62
@@ -89,7 +94,7 @@ firmware log shows correctly decoded sensors (e.g. `param 0x02 raw=00d9`
 - [ ] Writable parameter sizes/ranges in `esphome/nibe-entities.yaml`
       (numbers are best-effort from the 360P forum list).
 - [ ] Button codes 0x08/0x10/0x20 (semantics unknown).
-- [ ] `web_server` renders the three Display Row text sensors — that's the
+- [ ] `web_server` renders the four Display Row text sensors — that's the
       "virtual display" (also available in Home Assistant).
 - [ ] Whether the VVM300 pushes the F2025's 0x65 sensor block (the Python
       daemon decoded it as raw words; not yet ported).
@@ -102,8 +107,9 @@ The relay on GPIO1 is exposed as a plain switch — leave it off.
 
 ## Design notes
 
-- The C++ is a faithful port of `src/nibemote/protocol.py` (`LegacyParser`)
-  and `src/nibemote/client.py` (`NibeClient`), including the boot announce
+- The C++ faithfully ports the original Python parser/exchange logic (the
+  Python code was removed in the cleanup; see docs/PROTOCOL-SPEC.md and the
+  git history), including the boot announce
   (cmd 0x40 `40 85 00 00`), the 0x22 boot ping (3 announces), the 0x62 menu
   reply, NAK on bad checksums and the ENQ→ACK→frame→ACK→ETX write exchange.
 - One deliberate fix: the 0xC0 value-width heuristic (which loses any 2-byte

@@ -1,11 +1,5 @@
-.venv/
+.venv-esphome/
 __pycache__/
 *.pyc
-.env
-.uv/
-dist/
-*.egg-info/
-.pytest_cache/
-.venv-esphome/
 esphome/secrets.yaml
 esphome/.esphome/

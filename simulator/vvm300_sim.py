@@ -12,7 +12,7 @@ the VVM300 side of the legacy bus protocol (see src/nibemote/protocol.py):
 The scenario walks the full exchange: boot announce, boot ping 0x22, menu
 request 0x62 + reply, a 0xC0 parameter dump (sensors), a parameter write
 (triggered by the firmware's sim_actions script: curve offset -2), a display
-button press (cmd 0x40) and the display text rows (cmd 0x51-0x53).
+button press (cmd 0x40) and the display text rows (cmd 0x50-0x53).
 
 Usage: start the host firmware first (esphome run esphome/nibemote-host.yaml),
 then run this script. It prints one PASS/FAIL line per check and exits
@@ -171,10 +171,18 @@ def main() -> int:
     )
     master_sends(m, "param dump 0xC0", 0xC0, params)
 
-    # 6. display text row (row 2 = cmd 0x52), null-terminated
-    expect_ack(m, "text poll")
-    text = "Varmvattentemperatur".encode("latin-1") + b"\x00"
-    master_sends(m, "display text 0x52", 0x52, text)
+    # 6. display text rows: cmd 0x50..0x53 = rows 1..4, null-terminated ASCII
+    #    (observed layout: row2 = value, row3 = label, row4 = menu + clock).
+    #    Each frame gets its own poll exchange (POLL -> ACK -> FRAME -> ACK -> ETX).
+    display_rows = {
+        0x50: "Varmvatten",
+        0x51: "51.9 C",
+        0x52: "Varmvattentemperatur",
+        0x53: "1.0   14:25",
+    }
+    for cmd, text in display_rows.items():
+        expect_ack(m, f"text poll {cmd:#04x}")
+        master_sends(m, f"display row cmd {cmd:#04x}", cmd, text.encode("latin-1") + b"\x00")
 
     # 7. firmware's sim_actions kicks in ~45s after boot: curve offset write.
     #    The number control encodes -2 * factor(1) as 1 byte -> 0xFE.

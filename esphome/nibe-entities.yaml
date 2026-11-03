@@ -163,8 +163,9 @@ text_sensor:
     name: "Compressor"
     icon: "mdi:heat-pump"
 
-  # The virtual display: the three text rows the VVM300 would show on the
-  # physical panel (cmd 0x51/0x52/0x53 frames).
+  # The virtual display: the four text rows the VVM300 would show on the
+  # physical panel (cmd 0x50..0x53 frames; row2 = value, row3 = label,
+  # row4 = menu number + clock — see docs/PROTOCOL-SPEC.md).
   - platform: nibe
     nibe_id: nibe_bus
     display_row: 1
@@ -179,6 +180,11 @@ text_sensor:
     nibe_id: nibe_bus
     display_row: 3
     name: "Display Row 3"
+    icon: "mdi:menu"
+  - platform: nibe
+    nibe_id: nibe_bus
+    display_row: 4
+    name: "Display Row 4"
     icon: "mdi:menu"
 
 number:

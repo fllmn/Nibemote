@@ -27,8 +27,8 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(CONF_NIBE_ID): cv.use_id(NibeComponent),
             # 0xC0 parameter index with enum mappings (e.g. compressor_on)
             cv.Optional(CONF_PARAMETER): cv.hex_int_range(min=0, max=0xFF),
-            # display text row fed by master frames with cmd 0x51..0x53
-            cv.Optional(CONF_DISPLAY_ROW): cv.int_range(min=1, max=3),
+            # display text row fed by master frames with cmd 0x50..0x53
+            cv.Optional(CONF_DISPLAY_ROW): cv.int_range(min=1, max=4),
         }
     )
     .extend(cv.COMPONENT_SCHEMA),
