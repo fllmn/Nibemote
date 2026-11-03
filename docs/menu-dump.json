@@ -1,0 +1,20 @@
+{
+  "Normal": {
+    "1.0": {
+      "label": "Varmvattentemperatur",
+      "value": "51.7�C"
+    }
+  },
+  "Utökad": {
+    "1.0": {
+      "label": "Varmvattentemperatur",
+      "value": "51.7�C"
+    }
+  },
+  "Service": {
+    "1.0": {
+      "label": "Varmvattentemperatur",
+      "value": "51.7�C"
+    }
+  }
+}

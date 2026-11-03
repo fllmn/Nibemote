@@ -1,0 +1,17 @@
+[Unit]
+Description=Nibe F2025/VVM300 RS485 remote controller (nibemote)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/nibemote
+EnvironmentFile=/opt/nibemote/.env
+ExecStart=/opt/nibemote/.venv/bin/nibemote run
+Restart=always
+RestartSec=5
+# serial port access
+SupplementaryGroups=dialout
+
+[Install]
+WantedBy=multi-user.target
