@@ -136,3 +136,12 @@ uv run python tools/menuwalk.py --out docs/menu-dump.json
 Manual top-level menus (VVM300, rorjour.se PDF): 1.0 varmvatten, 2.0 framledning,
 3.0 framledning 2, 4.0 utetemp, 5.0 värmepump, 6.0 rumstemperatur, 7.0 klocka,
 8.0 övrigt (8.1.x displayinställningar, 8.1.1 Menytyp), 9.0 service.
+
+## ESPHome port (the current direction)
+
+This Python project is being replaced by an ESPHome firmware for a Waveshare
+ESP32-S3-Relay-1CH — see **[esphome/README.md](esphome/README.md)**. The C++
+component (`components/nibe/`) is a port of `protocol.py` + `client.py`, is
+fully tested against a simulated VVM300 master (`sim/vvm300_sim.py`, host
+build, no hardware needed), and exposes everything as native ESPHome/HA
+entities, so the MQTT bridge is no longer needed.

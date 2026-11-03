@@ -6,3 +6,6 @@ __pycache__/
 dist/
 *.egg-info/
 .pytest_cache/
+.venv-esphome/
+esphome/secrets.yaml
+esphome/.esphome/

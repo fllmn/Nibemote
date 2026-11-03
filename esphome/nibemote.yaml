@@ -1,0 +1,74 @@
+# nibemote — ESP32-S3-Relay-1CH (Waveshare) as a virtual display for the
+# Nibe F2025 + VVM300. Replaces the physical display panel on the VVM300
+# internal RS485 bus (19200 baud 8N1) and exposes everything to Home
+# Assistant via the ESPHome native API.
+#
+# Waveshare ESP32-S3-Relay-1CH pinout (wiki + schematic):
+#   RS485  : GPIO17 (TX) / GPIO18 (RX), auto direction control, 120R jumper
+#   Relay  : GPIO1
+#   BOOT   : GPIO0
+# Flash with: esphome run esphome/nibemote.yaml   (device on /dev/ttyACM*)
+#
+# IMPORTANT (see README "Safety"): the VVM300 stops polling the bus when the
+# display is unplugged — power-cycle the VVM300 with this board attached so it
+# sees the virtual display during boot.
+
+substitutions:
+  name: nibemote
+  friendly_name: Nibe VVM300
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  comment: "Nibe F2025 + VVM300 virtual display / bus bridge"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 8MB  # Waveshare ships N8 (8MB) — verify on arrival
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+uart:
+  - id: nibe_uart
+    rx_pin: GPIO18
+    tx_pin: GPIO17
+    baud_rate: 19200
+    rx_buffer_size: 512
+
+nibe:
+  - id: nibe_bus
+    uart_id: nibe_uart
+    addresses: [0xF9]  # display card we impersonate
+
+logger:
+  level: INFO
+  hardware_uart: USB_CDC  # S3 native USB CDC on the board's Type-C port
+  baud_rate: 0
+
+api:
+  reboot_timeout: 0s
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${name} Fallback"
+
+captive_portal:
+
+web_server:  # the "virtual display": shows the three display row text sensors
+
+switch:
+  - platform: gpio
+    pin: GPIO1
+    name: "Relay"
+    restore_mode: ALWAYS_OFF
+    icon: "mdi:electric-switch"
+
+packages:
+  nibe_entities: !include nibe-entities.yaml

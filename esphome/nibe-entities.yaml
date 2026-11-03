@@ -1,0 +1,297 @@
+# Nibe VVM300/F2025 bus entities — ported from src/nibemote/params.py (0xC0
+# parameter indices, Elektronikforumet thread t=13714) plus the display
+# emulation entities. Shared by nibemote.yaml (ESP32-S3) and nibemote-host.yaml
+# (simulation). Names/ranges for writable params are best-effort — verify
+# against the real display menu before relying on them.
+
+sensor:
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x00
+    name: "CPU ID"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x01
+    name: "Outdoor Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x02
+    name: "Hot Water Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x03
+    name: "Exhaust Air Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x04
+    name: "Supply Air Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x05
+    name: "Evaporator Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x06
+    name: "Supply Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x07
+    name: "Return Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x08
+    name: "Compressor Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x09
+    name: "Immersion Heater Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x1A
+    name: "Compressor Starts"
+    state_class: total_increasing
+    accuracy_decimals: 0
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x1B
+    name: "Compressor Hours"
+    unit_of_measurement: "h"
+    device_class: duration
+    state_class: total_increasing
+    accuracy_decimals: 0
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x1C
+    name: "Immersion Heater Hours"
+    unit_of_measurement: "h"
+    device_class: duration
+    state_class: total_increasing
+    accuracy_decimals: 0
+
+  # clock parameters (diagnostic; the pump is time master)
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x29
+    name: "Clock Year"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x2A
+    name: "Clock Month"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x2B
+    name: "Clock Day"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x2C
+    name: "Clock Hour"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x2D
+    name: "Clock Minute"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x2E
+    name: "Clock Second"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+
+text_sensor:
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x13
+    name: "Compressor"
+    icon: "mdi:heat-pump"
+
+  # The virtual display: the three text rows the VVM300 would show on the
+  # physical panel (cmd 0x51/0x52/0x53 frames).
+  - platform: nibe
+    nibe_id: nibe_bus
+    display_row: 1
+    name: "Display Row 1"
+    icon: "mdi:menu"
+  - platform: nibe
+    nibe_id: nibe_bus
+    display_row: 2
+    name: "Display Row 2"
+    icon: "mdi:menu"
+  - platform: nibe
+    nibe_id: nibe_bus
+    display_row: 3
+    name: "Display Row 3"
+    icon: "mdi:menu"
+
+number:
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x0A
+    name: "Heating Curve Slope"
+    min_value: 0
+    max_value: 15
+    step: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    id: curve_offset
+    parameter: 0x0B
+    name: "Heating Curve Offset"
+    min_value: -10
+    max_value: 10
+    step: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x0C
+    name: "Min Supply Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    min_value: 20
+    max_value: 80
+    step: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x0D
+    name: "Max Supply Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    min_value: 20
+    max_value: 80
+    step: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x15
+    name: "Operating Mode"
+    min_value: 0
+    max_value: 10
+    step: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x21
+    name: "Operating Mode Auto"
+    min_value: 0
+    max_value: 10
+    step: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x25
+    name: "Periodic Hot Water Interval"
+    unit_of_measurement: "days"
+    min_value: 0
+    max_value: 365
+    step: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    parameter: 0x26
+    name: "RCU Curve Offset"
+    min_value: -10
+    max_value: 10
+    step: 1
+
+  # The display's adjustment knob (cmd 0x40 knob frame).
+  - platform: nibe
+    nibe_id: nibe_bus
+    id: display_knob
+    knob: true
+    name: "Display Knob"
+    icon: "mdi:tune"
+    min_value: 0
+    max_value: 10
+    step: 1
+
+button:
+  # Captured display button codes (tools/menuwalk.py):
+  # 0x01 back, 0x02 next, 0x04 enter; 0x08/0x10/0x20 seen but semantics TBD.
+  - platform: nibe
+    nibe_id: nibe_bus
+    id: btn_back
+    code: 0x01
+    name: "Display Back"
+    icon: "mdi:arrow-left"
+  - platform: nibe
+    nibe_id: nibe_bus
+    id: btn_next
+    code: 0x02
+    name: "Display Next"
+    icon: "mdi:arrow-down"
+  - platform: nibe
+    nibe_id: nibe_bus
+    id: btn_enter
+    code: 0x04
+    name: "Display Enter"
+    icon: "mdi:check"
+  - platform: nibe
+    nibe_id: nibe_bus
+    code: 0x08
+    name: "Display Button 08"
+    icon: "mdi:gesture-tap-button"
+    entity_category: diagnostic
+  - platform: nibe
+    nibe_id: nibe_bus
+    code: 0x10
+    name: "Display Button 10"
+    icon: "mdi:gesture-tap-button"
+    entity_category: diagnostic
+  - platform: nibe
+    nibe_id: nibe_bus
+    code: 0x20
+    name: "Display Button 20"
+    icon: "mdi:gesture-tap-button"
+    entity_category: diagnostic

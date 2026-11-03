@@ -1,0 +1,62 @@
+# Host build of the nibemote firmware for protocol testing without hardware.
+#
+# The UART is a TCP socket server (tcp_uart): sim/vvm300_sim.py connects and
+# impersonates the VVM300 CPU (bus master). Build & run:
+#   esphome run esphome/nibemote-host.yaml
+# then in another terminal:
+#   python sim/vvm300_sim.py
+#
+# The script below triggers a param write (curve offset = -2) and display
+# button presses ~15s after boot so the simulator can verify the ENQ/frame
+# exchange end to end.
+
+esphome:
+  name: nibemote-host
+  friendly_name: nibemote host sim
+  on_boot:
+    then:
+      - script.execute: sim_actions
+
+host:
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+tcp_uart:
+  - id: nibe_uart
+    role: server
+    port: 6638
+    baud_rate: 19200
+    data_bits: 8
+    stop_bits: 1
+    parity: NONE
+
+nibe:
+  - id: nibe_bus
+    uart_id: nibe_uart
+    addresses: [0xF9]
+
+logger:
+  level: DEBUG
+
+script:
+  - id: sim_actions
+    mode: single
+    then:
+      - delay: 45s
+      - number.set:
+          id: curve_offset
+          value: -2
+      - delay: 3s
+      - button.press: btn_enter
+      - delay: 3s
+      - button.press: btn_back
+      - delay: 2s
+      - number.set:
+          id: display_knob
+          value: 3
+
+packages:
+  nibe_entities: !include nibe-entities.yaml
