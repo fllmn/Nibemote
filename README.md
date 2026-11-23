@@ -15,6 +15,8 @@ bus chaos ensued; this design is the fix.
 Validated live against a VVM300 + F2025: rows, menu navigation, knob (heating
 curve), clock reply, F2025 telemetry sensors.
 
+![Web based control panel](docs/images/screenshot.png)
+
 ## Quick start
 
 ```bash
