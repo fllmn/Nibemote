@@ -1,0 +1,334 @@
+# nibemote2 — display emulator (replaces the physical panel at 0x00F9).
+#
+# HOT-SWAP PROCEDURE — the master never needs a reboot (docs/protocol.md
+# "The display slot"): the running VVM300 drops the 00F9 slot to its ~520 ms
+# absent-node backoff the moment the real panel stops answering, and
+# re-detects a fresh display within ONE backoff poll. So:
+#   1. Power/boot this ESP any time — it starts UNARMED and fully silent, so
+#      it can sit on the bus next to the physical panel without colliding.
+#   2. Unplug the physical display.
+#   3. Flip the "Enable display emulation" switch: the engine answers the next
+#      poll with ENQ + the content request, repeats it until the master pushes
+#      the rows (observed: under one second), then answers idle polls with the
+#      panel's bare-ACK grammar. The ESP is now the display.
+# Turning the switch off at any moment is an instant kill switch (the master
+# falls back to its absent-node backoff); a reboot always returns to unarmed.
+#
+# SAFETY NOTES (see docs/bring-up.md):
+#   - While this runs, the VVM300 has no local panel — Home Assistant IS the
+#     display (rows + Plus/Minus/Enter).
+#   - If the ESP crashes/reboots (OTA!), the display vanishes for that period.
+#     Expect the VVM300 to log a "display missing" (if it disables heating for
+#     that, power-cycle it once the ESP is back — or flip the arm switch after
+#     the OTA, which re-announces without any reboot).
+#   - rs485_bus `active: true` must match the emulator role; the engine
+#     downgrades to passive with a loud error if the bus is locked to receive.
+#   - ADD THE 10k PULL-DOWN on GPIO21 (RS485_EN): without it the transceiver can
+#     drive the bus during boot/flash/brownout and freeze the whole heat pump bus.
+#   - cmd 0xD4 (the master's ~64 s clock query) stays UNANSWERED for now — wire
+#     evidence says the real panel ENQs and replies len-7 with its clock (row 4
+#     mirrors it); we only receipt-ACK the push until that's probed safely.
+
+substitutions:
+  name: nibemote
+  friendly_name: "Nibe VVM300"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  comment: "Nibe VVM300 virtual display (emulator)"
+  # boots UNARMED and silent; arming the switch opens the announce window
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+rs485_bus:
+  - id: nibe_rs485
+    uart_num: 2              # UART1 is disabled by something in this build; UART2 proven
+    rx_pin: GPIO18
+    tx_pin: GPIO17
+    en_pin: GPIO21
+    baud_rate: 19200
+    gap_symbols: 4
+    active: true              # <-- this build transmits
+    rx_buffer: 8192
+
+# Clock source for the D4 clock answer (and entropy generally). The panel
+# OWNED the system clock; with d4_reply enabled this ESP becomes that clock.
+time:
+  - platform: sntp
+    id: nibe_time
+    timezone: Europe/Stockholm  # VVM300 site local time
+
+nibe:
+  - id: nibe_bus
+    rs485_bus_id: nibe_rs485
+    # virtual display: http://nibemote.local:8080/ — the ported ../nibemote
+    # renderer: symbol strip, rows 2-4, raw symbol hex, a bit-matching
+    # table, and a button bank (plus/minus/enter + knob). Served from
+    # loop(); wire timing is ISR-driven, so rendering can never stall the
+    # bus (second core not needed). 0 = off
+    display_web_port: 8080
+    # --- system clock (0xD4): the master asks every ~64 s; the panel answers
+    # 7-byte BCD + tail (docs/protocol.md "The clock"). ENABLING d4_reply
+    # SETS the master's clock from NTP: row-4 display updates, and any
+    # time-dependent behavior (schedules, tariff windows) shifts with it.
+    # Flip deliberately, not casually. Row 4 corrects to real local time
+    # within one ~64 s D4 cycle.
+    d4_reply: true
+    d4_tail: 0      # 0 = auto: day-of-week, Sunday=1 (docs/protocol.md);
+                    # nonzero pins the tail for experiments.
+    d4_time_id: nibe_time
+    role: emulator
+    address: 0x00F9
+    request_byte: 0x67        # byte[1] of our request/key frames — the relayed
+                              # system value the panel echoes (0x67 = value on
+                              # the wire in the last two sessions; keys match)
+    # All wire timings (poll reply 2400 us, grant->frame 160 us, byte pacing
+    # 180 us, sender-close 670 us, push-receipt 15.4 ms, announce governor
+    # burst/breath 2/2, no-poll queue timeout 30 s) are FIXED, capture-measured
+    # constants in components/nibe/nibe_bus.h, each with its provenance note.
+    log_level: 1               # 0=summary, 1=line per exchange/frame, 2=+µs ledger
+
+text_sensor:
+  # F2025 raw hex — the leftovers that /10-°C rendering can't carry:
+  #   word 5 = 0x4000 constant, word 7 = 0x8001 constant, word 6 = large
+  #   non-thermal blob (bitfield/counter?); and the 0x71 status block
+  #   (16 bytes) for decoding watch. Update once their meaning is known.
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_word_hex: 5
+    name: "F2025 word 5 (hex)"
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_word_hex: 6
+    name: "F2025 word 6 (hex)"
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_word_hex: 7
+    name: "F2025 word 7 (hex)"
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_frame_hex: 0x71
+    name: "F2025 status frame 0x71 (hex)"
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_frame_hex: 0x72
+    name: "F2025 status frame 0x72 (hex)"
+
+  - platform: nibe
+    nibe_id: nibe_bus
+    display_row: 2
+    name: "Display row 2"
+  - platform: nibe
+    nibe_id: nibe_bus
+    display_row: 3
+    name: "Display row 3"
+  - platform: nibe
+    nibe_id: nibe_bus
+    display_row: 4
+    name: "Display row 4"
+  - platform: nibe
+    nibe_id: nibe_bus
+    display_row: 1
+    name: "Display row 1 (symbols, hex)"
+
+sensor:
+  - platform: nibe
+    nibe_id: nibe_bus
+    counter: frames
+    name: "Frames OK"
+  - platform: nibe
+    nibe_id: nibe_bus
+    counter: frames_bad
+    name: "Frames bad checksum"
+  - platform: nibe
+    nibe_id: nibe_bus
+    counter: polls_own
+    name: "Polls to display"
+  - platform: nibe
+    nibe_id: nibe_bus
+    counter: anomalies
+    name: "Anomalies"
+
+  # F2025 sensor block (cmd 0x65, 9 LE s16 words, value/10 = °C) — the word
+  # map lives in docs/commands.md: words 0-4 + 8 are the refrigerant cycle and
+  # water return; words 5/6/7 stay unpublished (constants/blob — /10 prints
+  # absurdities there).
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_register:
+      cmd: 0x65
+      offset: 0
+      signed: true
+      scale: 0.1
+    name: "F2025 outdoor temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_register:
+      cmd: 0x65
+      offset: 2
+      signed: true
+      scale: 0.1
+    name: "F2025 evaporating temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_register:
+      cmd: 0x65
+      offset: 4
+      signed: true
+      scale: 0.1
+    name: "F2025 suction gas temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_register:
+      cmd: 0x65
+      offset: 6
+      signed: true
+      scale: 0.1
+    name: "F2025 liquid line temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_register:
+      cmd: 0x65
+      offset: 16
+      signed: true
+      scale: 0.1
+    name: "F2025 water return temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+  # bytes 7-8 of the 0x71 status block (byte-packed): u16 LE =
+  # compressor operating hours (docs/commands.md)
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_register:
+      cmd: 0x71
+      offset: 7
+    name: "F2025 0x71 compressor operating hours"
+    unit_of_measurement: "h"
+    icon: "mdi:clock-outline"
+    state_class: total_increasing
+    accuracy_decimals: 0
+  # bytes 3-4 of the same block: candidate compressor starts, unconfirmed
+  # (docs/hypotheses.md). Want any 0x71 field as a decimal? copy this stanza
+  # and set scale: 0.1
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_register:
+      cmd: 0x71
+      offset: 3
+    name: "F2025 0x71 compressor starts (candidate)"
+    icon: "mdi:counter"
+    state_class: total_increasing
+    accuracy_decimals: 0
+  - platform: nibe
+    nibe_id: nibe_bus
+    f2025_register:
+      cmd: 0x65
+      offset: 8
+      signed: true
+      scale: 0.1
+    name: "F2025 hot gas temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
+binary_sensor:
+  - platform: nibe
+    nibe_id: nibe_bus
+    polled: true
+    name: "Display polled"
+
+# SAFETY STAGING: the emulator boots UNARMED — it answers nothing (behaves like
+# the passive sniffer). Only after the physical panel is unplugged do you flip
+# this switch: the engine arms AND starts the reannounce: ENQ + the content
+# request (40 67 00 00, repeated until the first content row arrives — under a
+# second on a running master), then the panel's idle bare-ACK grammar. Turning
+# it off at any time is an instant kill switch; a reboot always returns to
+# unarmed.
+switch:
+  - platform: nibe
+    nibe_id: nibe_bus
+    restore_mode: ALWAYS_OFF
+    name: "Enable display emulation"
+
+button:
+  - platform: nibe
+    nibe_id: nibe_bus
+    key: plus
+    name: "Display Plus"
+  - platform: nibe
+    nibe_id: nibe_bus
+    key: minus
+    name: "Display Minus"
+  - platform: nibe
+    nibe_id: nibe_bus
+    key: enter
+    name: "Display Enter"
+  - platform: nibe
+    nibe_id: nibe_bus
+    announce: true
+    id: reannounce
+    name: "Re-announce display"
+
+number:
+  # the front-panel knob: value = placement (u8 0-255), queued as one
+  # cmd-0x40 event frame [03, placement, 00, 00] — unverified knob coding
+  # (docs/hypotheses.md).
+  - platform: nibe
+    nibe_id: nibe_bus
+    knob: true
+    name: "Display knob"
+    min_value: 0
+    max_value: 255
+    step: 1
+    icon: "mdi:tune-variant"
+
+
+logger:
+  level: DEBUG
+  hardware_uart: USB_CDC
+
+api:
+  reboot_timeout: 0s
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${name} Fallback"
+
+captive_portal:
+
+web_server:
+  log: false
+
+ota:
+  - platform: esphome

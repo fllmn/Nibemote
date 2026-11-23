@@ -1,0 +1,13 @@
+[project]
+name = "nibemote2"
+version = "0.1.0"
+description = "Nibe VVM300/F2025 display replacement firmware (ESPHome)"
+# Firmware toolchain project: only the esphome build tooling; the sim/tools scripts are stdlib-only.
+requires-python = ">=3.13"
+dependencies = [
+    # pinned to the version the protocol and builds were validated with (AGENTS.md)
+    "esphome==2026.10.2",
+]
+
+[tool.uv]
+package = false  # virtual project — manage dependencies, never install the repo as a package

@@ -1,0 +1,93 @@
+# nibemote2 — HOST BUILD for protocol tests against sim/vvm300_sim.py.
+#
+# The UART is a TCP socket (tcp_uart, firmware is the server on port 6638); the
+# simulator connects and plays the VVM300 CPU. The firmware runs as the display
+# emulator, so the full poll/ENQ/announce/key exchange is exercised byte-exact
+# without hardware:
+#
+#   esphome run configs/nibemote-host.yaml      # terminal 1
+#   python3 sim/vvm300_sim.py                   # terminal 2
+#
+# The on_boot script presses Enter ~25 s in, so the sim can verify a full key cycle.
+#
+# The emulator arms at setup and immediately starts requesting content
+# (40 88 00 00 every poll) until the sim master finishes its boot delay and
+# pushes rows 2-4 — the same grammar as the real bus.
+
+esphome:
+  name: nibemote-host
+  friendly_name: nibemote2 host sim
+  on_boot:
+    then:
+      - delay: 25s
+      - button.press: test_enter
+      # knob placement 200 (0xC8) ~40 s in: exercises the cmd-0x40 knob
+      # event path end to end for the sim's checks (key at 25 s, knob at 40 s)
+      - delay: 15s
+      - number.set:
+          id: display_knob
+          value: 200
+
+host:
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+tcp_uart:
+  - id: sim_uart
+    role: server
+    port: 6638
+    baud_rate: 19200
+    data_bits: 8
+    stop_bits: 1
+    parity: NONE
+
+rs485_bus:
+  - id: nibe_rs485
+    uart_id: sim_uart        # stream mode: engine fed from loop(), gaps from arrivals
+    active: true
+
+nibe:
+  - id: nibe_bus
+    rs485_bus_id: nibe_rs485
+    role: emulator
+    address: 0x00F9
+    log_level: 2
+    # the linux host has no time: platform — the engine's epoch fallback
+    # serves the real system clock (UTC; the sim's clock check expects UTC)
+    d4_reply: true      # the sim's phase D asserts the BCD clock report
+    d4_tail: 0         # 0 = auto: day-of-week, Sunday=1
+
+text_sensor:
+  - platform: nibe
+    nibe_id: nibe_bus
+    display_row: 2
+    name: "Display row 2"
+
+button:
+  - platform: nibe
+    nibe_id: nibe_bus
+    key: enter
+    id: test_enter
+    name: "Test Enter"
+
+number:
+  - platform: nibe
+    nibe_id: nibe_bus
+    knob: true
+    id: display_knob
+    name: "Display knob (sim)"
+    min_value: 0
+    max_value: 255
+    step: 1
+
+logger:
+  level: DEBUG
+
+script:
+  - id: sim_press
+    mode: single
+    then:
+      - button.press: test_enter
