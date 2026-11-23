@@ -40,6 +40,19 @@ make flash-sniffer                                      # network OTA (DEVICE=..
 make sim                                                # → ALL CHECKS PASSED
 ```
 
+## Verifying a change on target
+
+Every change lands only after this list passes on the device. The sim covers the wire;
+this covers what the sim cannot see. Arm last, and keep the physical display unplugged.
+
+- Boot: the log shows the transport active and the emulator unarmed.
+- Sniffer: other nodes' exchanges still appear while emulating.
+- Arm: the first backoff poll gets our ENQ, the request rhythm runs, rows 2–4 appear.
+- Keys: plus/minus/enter each land once; the anomaly counter does not move.
+- Knob: a placement change lands and the menu responds.
+- Clock: the VVM300's clock is still right after a 0xD4 exchange.
+- Steady state: no spontaneous ETX, and the counter summary shows no new anomalies.
+
 ## Phase 1 — capture with the physical display attached (SAFE)
 
 Goal: confirm the open items in docs/hypotheses.md using our own captures
