@@ -53,6 +53,17 @@ class NibeKnobNumber : public number::Number, public Component {
  protected:
   NibeBus *hub_{nullptr};
 };
+
+/// Register-address number: pins the 0x72 probe target on the hub; control() only records it.
+class NibeRegisterNumber : public number::Number, public Component {
+ public:
+  void setup() override;
+  void control(float value) override;
+  void set_hub(NibeBus *hub) { this->hub_ = hub; }
+
+ protected:
+  NibeBus *hub_{nullptr};
+};
 #endif
 
 #ifdef USE_SWITCH
@@ -79,12 +90,14 @@ class NibeButton : public button::Button, public Component {
     this->announce_ = false;
   }
   void set_announce() { this->announce_ = true; }
+  void set_read_register() { this->read_register_ = true; }
 
  protected:
   void press_action() override;
 
   uint8_t key_{0};
   bool announce_{false};
+  bool read_register_{false};
   NibeBus *hub_{nullptr};
 };
 #endif
@@ -232,6 +245,10 @@ class NibeBus : public Component {
   bool queue_key(uint8_t key);
   /// Same, with an explicit cmd-40 data[1] — used for knob events [KEY_KNOB, placement, 0, 0].
   bool queue_key_number(uint8_t key, uint8_t value);
+  /// Pin the probe register for the read button (number entity, task side).
+  void set_register_address(uint8_t r) { this->register_addr_ = r; }
+  /// Queue a register read — cmd 0x72, data `05 <reg>`, delivered on our next granted poll (emulator only).
+  bool queue_register_read();
   /// Refill the announce queue while a pump window is active (protocol.md "The display slot").
   void pump_announces_();  // refill announces while window open
   /// Re-announce: clears the rows latch and re-arms the request pump (arm switch or Re-announce button).
@@ -339,6 +356,7 @@ class NibeBus : public Component {
   volatile uint8_t push_ack_rd_{0};  // __atomic: loop fires
   uint8_t request_byte_{0x88};          // relaid system value in cmd-40 frames
   uint8_t knob_pos_{127};               // panel knob placement (mid/vertical)
+  uint8_t register_addr_{0};            // probe target pinned by the register-address number
 
   // Delayed replies (mute-turnaround): armed in the RX ISR; fired by the tick (device) or loop (host).
   static constexpr uint8_t RP_NONE = 0, RP_CTRL = 1, RP_FRAME = 2;

@@ -48,6 +48,10 @@ static constexpr uint8_t CMD_STATUS = 0x71;
 // 0xC0: forum parameter map from a different product line — kept as a rejected citation (hypotheses.md)
 static constexpr uint8_t CMD_PARAM = 0xC0;
 
+// register scheme: read 0x72 `05 <reg>` (write 0x76 `05 <reg> <val>` — reads only, commands.md)
+static constexpr uint8_t CMD_REG_READ = 0x72;
+static constexpr uint8_t REG_PREFIX = 0x05;
+
 // XOR-8 over cmd, sender, len and data. Pure/ISR-safe.
 static inline uint8_t checksum8(const uint8_t *data, size_t len) {
   uint8_t x = 0;

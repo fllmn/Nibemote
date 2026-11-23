@@ -91,3 +91,7 @@ Byte-packed u16 LE fields on odd offsets (no word grid).
 `05 <reg>` reads, `05 <reg> <val>` writes. The master addresses the same
 register numbers across nodes with node-specific values. Power-up writes
 to the F2025 arrive as 0x76 len-3 bursts.
+
+The emulator can queue a read (register-address number + read-register
+button; whether the master answers a panel-initiated 0x72 is the open
+question, hypotheses.md item 7).

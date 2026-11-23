@@ -595,6 +595,17 @@ bool NibeBus::queue_key_number(uint8_t key, uint8_t value) {
   return this->queue_frame_(CMD_KEY, data, 4);
 }
 
+bool NibeBus::queue_register_read() {
+  if (!this->emulating()) {
+    ESP_LOGW(TAG, "role is %s: register read 05 %02X not queued (refuses to transmit)",
+             this->role_name(), this->register_addr_);
+    return false;
+  }
+  uint8_t data[2] = {REG_PREFIX, this->register_addr_};
+  ESP_LOGI(TAG, "queueing register read 0x72: 05 %02X (answer lands in the frame log)", this->register_addr_);
+  return this->queue_frame_(CMD_REG_READ, data, sizeof(data));
+}
+
 bool NibeBus::trigger_announce() {
   if (!this->emulating())
     return false;
@@ -1011,7 +1022,9 @@ void NibeSwitch::write_state(bool state) {
 
 #ifdef USE_BUTTON
 void NibeButton::press_action() {
-  if (this->announce_) {
+  if (this->read_register_) {
+    this->hub_->queue_register_read();  // target pinned by the register-address number
+  } else if (this->announce_) {
     this->hub_->trigger_announce();
   } else {
     this->hub_->queue_key(this->key_);
@@ -1038,6 +1051,19 @@ void NibeKnobNumber::control(float value) {
   this->hub_->set_knob_placement(placement);  // also syncs the page dial
   // optimistic echo: the master never reports placements back
   this->publish_state((float) placement);
+}
+
+void NibeRegisterNumber::setup() {
+  this->publish_state(0.0f);  // probe register 0 until the user picks one
+}
+
+void NibeRegisterNumber::control(float value) {
+  const float lo = this->traits.get_min_value();
+  const float hi = this->traits.get_max_value();
+  value = value < lo ? lo : (value > hi ? hi : value);
+  uint8_t reg = (uint8_t) (long) lroundf(value);
+  this->hub_->set_register_address(reg);
+  this->publish_state((float) reg);  // local record; no bus traffic until the read button
 }
 #endif  // USE_NUMBER
 

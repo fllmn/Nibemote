@@ -297,6 +297,12 @@ button:
     announce: true
     id: reannounce
     name: "Re-announce display"
+  # queue one 0x72 register read (05 <reg>); the target comes from the
+  # "Register address" number — answers appear in the frame log
+  - platform: nibe
+    nibe_id: nibe_bus
+    read_register: true
+    name: "Read register"
 
 number:
   # the front-panel knob: value = placement (u8 0-255), queued as one
@@ -310,6 +316,15 @@ number:
     max_value: 255
     step: 1
     icon: "mdi:tune-variant"
+  # pins the register the "Read register" button probes via a 0x72 read
+  - platform: nibe
+    nibe_id: nibe_bus
+    register_address: true
+    name: "Register address"
+    min_value: 0
+    max_value: 255
+    step: 1
+    icon: "mdi:counter"
 
 
 logger:
