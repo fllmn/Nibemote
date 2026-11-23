@@ -360,11 +360,8 @@ void IRAM_ATTR NibeBus::at_chk_(uint8_t b, uint32_t ts) {
 
 /// Frame is on the wire; expect the sender's ETX (an ACK may interleave).
 void IRAM_ATTR NibeBus::at_post_frame_(uint8_t b, uint32_t ts) {
-  if (b == CTRL_ETX) {
-    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
-    this->st_ = S_BOUNDARY;
-  } else if (b == CTRL_ENQ) {
-    // the polled node answers a master push with an immediate ENQ — grant/reply parse at the boundary
+  if (b == CTRL_ETX || b == CTRL_ENQ) {
+    // ETX closes the exchange; an ENQ from the polled node answers a master push and re-arms the parse
     this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
     this->st_ = S_BOUNDARY;
   } else if (b == CTRL_ACK || b == CTRL_NAK) {
@@ -460,13 +457,11 @@ void IRAM_ATTR NibeBus::fire_pending_reply_(uint32_t now) {
 }
 
 void NibeBus::setup() {
-  if (this->emulator_role_ && (this->bus_ == nullptr || !this->bus_->bus_active())) {
-    ESP_LOGE(TAG, "role emulator requires rs485_bus 'active: true' — refusing to transmit (sniffer)");
-    this->emulator_role_ = false;
-  }
+  if (this->emulator_intent_ && !this->transmit_capable_())
+    ESP_LOGE(TAG, "role emulator requires rs485_bus 'active: true' — refusing to transmit");
 #ifndef USE_SWITCH
   // switchless builds (host harness): arm at setup and start the request cycle — the panel's power-up behavior
-  if (this->emulator_role_) {
+  if (this->emulator_intent_ && this->transmit_capable_()) {
     this->armed_ = true;
     this->trigger_announce();
     ESP_LOGW(TAG, "no arm switch in this build: emulator armed at setup, requesting content");
@@ -476,7 +471,7 @@ void NibeBus::setup() {
     this->byte_us_ = 11u * (1000000u / this->bus_->get_baud_rate());  // 9-bit chars + stop
   ESP_LOGCONFIG(TAG, "NibeBus: %s role, address %04X", this->role_name(), this->my_addr_);
 #ifdef USE_ESP32
-  if (!this->emulator_role_)
+  if (!this->emulator_intent_ || !this->transmit_capable_())
     return;  // sniffer builds never pace replies: skip the 125 us tick entirely
   if (this->reply_timer_ == nullptr) {
     esp_timer_create_args_t targs = {};
@@ -857,7 +852,7 @@ void NibeBus::loop() {
   this->pump_announces_();
 
   // mute-turnaround dispatch: device = the 125 us esp_timer tick; loop() is the HOST tick only
-  if (this->emulator_role_ && this->bus_ != nullptr) {
+  if (this->emulator_intent_ && this->bus_ != nullptr) {
 #ifndef USE_ESP32
     this->feed_paced_(this->bus_->now_us());  // host builds: loop is the feeder
     this->fire_pending_reply_(this->bus_->now_us());  // host builds: loop is the sole firer

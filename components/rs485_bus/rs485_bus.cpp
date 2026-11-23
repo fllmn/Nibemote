@@ -204,7 +204,7 @@ void RS485Bus::hw_setup_() {
   uart_ll_set_sclk(hw, (soc_module_clk_t) UART_SCLK_APB);  // 80 MHz on S3
   uart_ll_set_baudrate(hw, this->baud_, 80000000);
   uart_ll_set_data_bit_num(hw, UART_DATA_8_BITS);
-  uart_ll_set_parity(hw, UART_PARITY_EVEN);  // the 9th marking slot: RX samples it, TX emits it (hypotheses.md 15)
+  uart_ll_set_parity(hw, UART_PARITY_EVEN);  // the 9th marking slot: RX samples it, TX emits it (protocol.md)
   uart_ll_set_stop_bits(hw, UART_STOP_BITS_1);
   uart_ll_set_mode_rs485_app_ctrl(hw);  // receiver muted while transmitting: no echo
 
@@ -454,7 +454,7 @@ void RS485Bus::dump_config() {
   ESP_LOGCONFIG(TAG, "  baud: %u, gap: %u byte-times (~%u us)", (unsigned) this->baud_,
                 (unsigned) this->gap_symbols_, (unsigned) this->gap_us_);
   ESP_LOGCONFIG(TAG, "  active: %d", this->active_);
-  ESP_LOGCONFIG(TAG, "  line: 9-bit, marking slot on TX+RX (engine passes per-byte marks; docs/hypotheses.md 15)");
+  ESP_LOGCONFIG(TAG, "  line: 9-bit, marking slot on TX+RX (engine passes per-byte marks; protocol.md)");
   ESP_LOGCONFIG(TAG, "  engine attached: %s", this->engine_ != nullptr ? "yes" : "no");
 }
 

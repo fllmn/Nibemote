@@ -108,7 +108,7 @@ sensor:
   - platform: nibe
     nibe_id: nibe_bus
     counter: framing_errors
-    name: "Framing errors (stop bit = 0)"
+    name: "Framing errors (slot=0 bytes)"
   - platform: nibe
     nibe_id: nibe_bus
     last_gap_ms: true

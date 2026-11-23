@@ -166,13 +166,11 @@ class NibeBus : public Component {
   void setup() override;
   void loop() override;
   void dump_config() override;
-  void set_emulator_role(bool on) { this->emulator_role_ = on; }
+  void set_emulator_role(bool on) { this->emulator_intent_ = on; }
   /// runtime arm/off gate (switch entity); the ISR paths check emulating()
   void set_armed(bool armed) { this->armed_ = armed; }
   /// emulator intent AND a transmit-capable transport AND the arm switch — never one alone
-  bool emulating() const {
-    return this->emulator_role_ && this->armed_ && this->bus_ != nullptr && this->bus_->bus_active();
-  }
+  bool emulating() const { return this->emulator_intent_ && this->armed_ && this->transmit_capable_(); }
   /// cmd-0x40 data[1] in request AND key frames: a relaid system value, no protocol meaning (commands.md).
   void set_request_byte(uint8_t b) { this->request_byte_ = b; }
   void set_address(uint16_t address) { this->my_addr_ = address; }
@@ -251,14 +249,19 @@ class NibeBus : public Component {
   bool trigger_announce();
 
   uint16_t get_address() const { return this->my_addr_; }
-  /// what this build is: a sniffer, or an emulator that is transmitting or merely armed
+  /// what this build is: a sniffer, or an emulator that is transmitting, armed, or unable to
   const char *role_name() const {
-    if (!this->emulator_role_)
+    if (!this->emulator_intent_)
       return "sniffer";
-    return this->emulating() ? "emulator" : "emulator (unarmed)";
+    if (!this->transmit_capable_())
+      return "emulator (transport passive)";
+    return this->armed_ ? "emulator" : "emulator (unarmed)";
   }
 
  protected:
+  /// the transport may drive the line (config `active: true`, resolved in the transport's setup)
+  bool transmit_capable_() const { return this->bus_ != nullptr && this->bus_->bus_active(); }
+
   // ---- engine (ISR-safe) side ----------------------------------------------
   static void IRAM_ATTR rx_byte_trampoline_(void *ctx, uint8_t byte, uint32_t ts, uint8_t flags) {
     static_cast<NibeBus *>(ctx)->rx_byte_(byte, ts, flags);
@@ -308,7 +311,7 @@ class NibeBus : public Component {
   };
   State st_{S_BOUNDARY};
 
-  bool emulator_role_{false};         // config intent: this build impersonates the panel
+  bool emulator_intent_{false};  // config intent: this build impersonates the panel
   volatile bool armed_{false};  // staged: only the arm switch (or switchless
                                   // host builds, armed in setup()) can raise this
   uint16_t my_addr_{ADDR_DISPLAY};

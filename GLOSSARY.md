@@ -18,9 +18,8 @@ The mode in which this project answers polls and transmits as the panel.
 _Avoid_: active mode, master mode
 
 **Sniffer**:
-The capture-only mode, in which the bus is recorded and nothing is transmitted. It runs
-whether or not the emulator is on.
-_Avoid_: passive mode, tap, monitor
+The recording of every byte on the bus. It runs whether or not the emulator is on.
+_Avoid_: passive mode, capture mode, tap, monitor
 
 **Exchange**:
 One poll and everything the bus does in response, until the bus falls silent again.

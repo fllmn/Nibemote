@@ -38,9 +38,9 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(): cv.declare_id(NibeBus),
             cv.Required(CONF_RS485_BUS_ID): cv.use_id(RS485Bus),
-            # passive: never transmits (the sniffer); emulator: answers polls, requests rows,
-            # replies 0x62, delivers queued keys (protocol.md) — requires active: true,
-            # else downgraded with a loud error
+            # sniffer: captures only; emulator: answers polls, requests rows, replies
+            # 0x62, delivers queued keys (protocol.md) — requires active: true, and a
+            # passive transport is refused loudly at setup
             cv.Optional(CONF_ROLE, default=ROLE_PASSIVE): _role,
             cv.Optional(CONF_ADDRESS, default=0x00F9): cv.int_range(min=0, max=0xFFFF),
             cv.Optional(CONF_MENU_REPLY, default=True): cv.boolean,
