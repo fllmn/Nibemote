@@ -120,7 +120,7 @@ void IRAM_ATTR NibeBus::feed_paced_(uint32_t now) {
 }
 
 void IRAM_ATTR NibeBus::rx_byte_(uint8_t b, uint32_t ts, uint8_t flags) {
-  const bool hb1 = (flags & rs485_bus::RXF_HB9) != 0;
+  (void) flags;  // ninth-bit fact belongs to the transport; this FSM is position-based
   // intra-frame byte-gap tracking (diagnostics): body bytes only — the leading gap belongs to the exchange
   if (this->st_ >= State::S_F_SENDER_HI && this->st_ <= State::S_F_CHK) {
     uint32_t d = ts - this->last_byte_ts_;
@@ -131,37 +131,28 @@ void IRAM_ATTR NibeBus::rx_byte_(uint8_t b, uint32_t ts, uint8_t flags) {
 
   switch (this->st_) {
     case S_BOUNDARY:
-      this->at_boundary_(b, ts, hb1);
+      this->at_boundary_(b, ts);
       break;
     case S_POLL_HI:
-      this->at_poll_lo_(b, ts, hb1);
+      this->at_poll_lo_(b, ts);
       break;
     case S_CTRL:
-      this->at_ctrl_(b, ts, hb1);
+      this->at_ctrl_(b, ts);
       break;
     case S_F_SENDER_HI:
       this->sender_ = ((uint16_t) b) << 8;
       this->xor_run_ ^= b;
-      this->census_(hb1, &this->b9_data_1_, &this->b9_data_0_);
-      this->f_b9_or_ |= hb1;
-      this->f_b9_and_ &= (uint8_t) hb1;
       this->st_ = S_F_SENDER_LO;
       break;
     case S_F_SENDER_LO:
       this->sender_ |= b;
       this->xor_run_ ^= b;
-      this->census_(hb1, &this->b9_data_1_, &this->b9_data_0_);
-      this->f_b9_or_ |= hb1;
-      this->f_b9_and_ &= (uint8_t) hb1;
       this->st_ = S_F_LEN;
       break;
     case S_F_LEN:
       this->f_len_ = b;
       this->f_idx_ = 0;
       this->xor_run_ ^= b;
-      this->census_(hb1, &this->b9_data_1_, &this->b9_data_0_);
-      this->f_b9_or_ |= hb1;
-      this->f_b9_and_ &= (uint8_t) hb1;
       if (b > FRAME_MAX_DATA) {  // exactly the len f_data_ buffers; real frames stay under 32 (rows ~25, sensor blocks ~19). A larger declared len would over-read f_data_ at the checksum anyway
         this->anomalies_++;
         this->push_event_(EventT{ts, EV_ANOMALY, AN_FRAME_ABORT, this->sender_, b, 0});
@@ -177,22 +168,18 @@ void IRAM_ATTR NibeBus::rx_byte_(uint8_t b, uint32_t ts, uint8_t flags) {
         this->f_data_[this->f_idx_] = b;
       this->f_idx_++;
       this->xor_run_ ^= b;
-      this->census_(hb1, &this->b9_data_1_, &this->b9_data_0_);
-      this->f_b9_or_ |= hb1;
-      this->f_b9_and_ &= (uint8_t) hb1;
       if (this->f_idx_ >= this->f_len_)
         this->st_ = S_F_CHK;
       break;
     case S_F_CHK:
-      this->at_chk_(b, ts, hb1);
+      this->at_chk_(b, ts);
       break;
     case S_POST_FRAME:
-      this->at_post_frame_(b, ts, hb1);
+      this->at_post_frame_(b, ts);
       break;
     case S_HUNT:
       if (b == CTRL_ETX) {
-        this->census_(hb1, &this->b9_ctrl_1_, &this->b9_ctrl_0_);
-        this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0, (uint8_t) (hb1 ? EVFL_CTRL_B9 : 0)});
+        this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
         this->st_ = S_BOUNDARY;
       }
       break;
@@ -200,15 +187,12 @@ void IRAM_ATTR NibeBus::rx_byte_(uint8_t b, uint32_t ts, uint8_t flags) {
 }
 
 /// Boundary byte dispatch: poll-pair hi candidates, stray control bytes, or a frame start.
-void IRAM_ATTR NibeBus::at_boundary_(uint8_t b, uint32_t ts, bool hb1) {
+void IRAM_ATTR NibeBus::at_boundary_(uint8_t b, uint32_t ts) {
   if (b == 0x00 || b == 0x41) {  // poll hi: nodes are 00xx (VVM accessories/display), F2025 = 41xx
-    this->census_(hb1, &this->b9_poll_1_, &this->b9_poll_0_);
-    this->poll_hb1_ = hb1;
     this->poll_hi_ = b;
     this->st_ = S_POLL_HI;
   } else if (b == CTRL_ACK) {
-    this->census_(hb1, &this->b9_ctrl_1_, &this->b9_ctrl_0_);
-    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0, (uint8_t) (hb1 ? EVFL_CTRL_B9 : 0)});
+    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
     if (this->enq_pending_ && this->emulating()) {
       // only a poll pair revokes the grant: this ACK (across a gap) is ours — deliver through the grant window
       this->arm_reply_(RP_FRAME, 0, ts, GRANT_FRAME_DELAY_US);
@@ -219,15 +203,14 @@ void IRAM_ATTR NibeBus::at_boundary_(uint8_t b, uint32_t ts, bool hb1) {
       this->we_own_close_ = false;  // the close is armed/fired — exactly once
     }
   } else if (b == CTRL_ENQ || b == CTRL_NAK || b == CTRL_ETX) {
-    this->census_(hb1, &this->b9_ctrl_1_, &this->b9_ctrl_0_);
-    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0, (uint8_t) (hb1 ? EVFL_CTRL_B9 : 0)});
+    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
   } else {
-    this->begin_frame_(b, hb1);
+    this->begin_frame_(b);
   }
 }
 
 /// Second byte of a poll pair: the polled slot opens. Emulator replies right here.
-void IRAM_ATTR NibeBus::at_poll_lo_(uint8_t b, uint32_t ts, bool hb1) {
+void IRAM_ATTR NibeBus::at_poll_lo_(uint8_t b, uint32_t ts) {
   uint16_t addr = ((uint16_t) this->poll_hi_ << 8) | b;
   this->polled_addr_ = addr;
   this->slot_ours_ = (addr == this->my_addr_);
@@ -236,9 +219,7 @@ void IRAM_ATTR NibeBus::at_poll_lo_(uint8_t b, uint32_t ts, bool hb1) {
   this->paced_k_ = 0;
   this->paced_n_ = 0;
 
-  this->census_(hb1, &this->b9_poll_1_, &this->b9_poll_0_);
-  this->push_event_(EventT{ts, EV_POLL, 0, addr, 0, 0,
-                           (uint8_t) ((this->poll_hb1_ ? EVFL_POLL_B9_HI : 0) | (hb1 ? EVFL_POLL_B9_LO : 0))});
+  this->push_event_(EventT{ts, EV_POLL, 0, addr, 0, 0});
   if (addr == this->my_addr_) {
     this->polls_own_++;
     this->we_own_close_ = false;  // the master moved on; no close is owed
@@ -265,8 +246,8 @@ void IRAM_ATTR NibeBus::at_poll_lo_(uint8_t b, uint32_t ts, bool hb1) {
         this->enq_streak_ = 0;
         this->bare_owed_ = 0;
       } else if (this->bare_owed_ > 0) {
-        reply = CTRL_ACK;  // breath poll: requests stay queued — a slot the
-        this->bare_owed_--;    // master can push content into (protocol.md)
+        reply = CTRL_ACK;  // breath poll: requests stay queued, the master
+        this->bare_owed_--;    // pushes content into the free slots (hypotheses.md 1)
       } else if (this->enq_streak_ >= ANNOUNCE_BURST) {
         reply = CTRL_ACK;  // burst spent: open bare slots for the master
         this->enq_streak_ = 0;
@@ -286,15 +267,14 @@ void IRAM_ATTR NibeBus::at_poll_lo_(uint8_t b, uint32_t ts, bool hb1) {
 }
 
 /// Response/continuation slot of the just-polled exchange.
-void IRAM_ATTR NibeBus::at_ctrl_(uint8_t b, uint32_t ts, bool hb1) {
+void IRAM_ATTR NibeBus::at_ctrl_(uint8_t b, uint32_t ts) {
   if (this->replied_ && b == this->reply_byte_ && (ts - this->reply_ts_) < 4 * this->byte_us_) {
     // our own reply leaking through the transceiver/isolator — hardware mutes most of these
     this->echo_filtered_++;
     return;
   }
   if (b == CTRL_ACK) {
-    this->census_(hb1, &this->b9_ctrl_1_, &this->b9_ctrl_0_);
-    this->push_event_(EventT{ts, EV_CTRL, b, this->polled_addr_, 0, 0, (uint8_t) (hb1 ? EVFL_CTRL_B9 : 0)});
+    this->push_event_(EventT{ts, EV_CTRL, b, this->polled_addr_, 0, 0});
     if (this->enq_pending_ && this->slot_ours_) {
       // grant -> frames start ~+160 us (GRANT_FRAME_DELAY_US) — the queue head is taken, never retried
       this->arm_reply_(RP_FRAME, 0, ts, GRANT_FRAME_DELAY_US);
@@ -303,45 +283,29 @@ void IRAM_ATTR NibeBus::at_ctrl_(uint8_t b, uint32_t ts, bool hb1) {
     this->replied_ = false;
     this->st_ = S_BOUNDARY;
   } else if (b == CTRL_ENQ || b == CTRL_NAK || b == CTRL_ETX) {
-    this->census_(hb1, &this->b9_ctrl_1_, &this->b9_ctrl_0_);
-    this->push_event_(EventT{ts, EV_CTRL, b, this->polled_addr_, 0, 0, (uint8_t) (hb1 ? EVFL_CTRL_B9 : 0)});
+    this->push_event_(EventT{ts, EV_CTRL, b, this->polled_addr_, 0, 0});
     this->replied_ = false;
     this->st_ = S_BOUNDARY;
   } else if (b == 0x00 || b == 0x41) {
     // node silent; master moved straight to the next poll
     this->replied_ = false;
-    this->census_(hb1, &this->b9_poll_1_, &this->b9_poll_0_);
-    this->poll_hb1_ = hb1;
     this->poll_hi_ = b;
     this->st_ = S_POLL_HI;
   } else {
     // a frame arrives into the slot (rows after our ACK) or from a node after its ENQ/grant
     this->replied_ = false;
-    this->begin_frame_(b, hb1);
+    this->begin_frame_(b);
   }
 }
 
-void IRAM_ATTR NibeBus::begin_frame_(uint8_t cmd, bool hb1) {
+void IRAM_ATTR NibeBus::begin_frame_(uint8_t cmd) {
   this->cmd_ = cmd;
   this->xor_run_ = cmd;
   this->f_max_gap_us_ = 0;       // fresh intra-frame spacing measurement
-  this->f_b9_or_ = 0;            // fresh parity-slot uniformity (probe mode census)
-  this->f_b9_and_ = 0xFF;
-  this->census_(hb1, &this->b9_data_1_, &this->b9_data_0_);
-  this->f_b9_or_ |= (uint8_t) hb1;
-  this->f_b9_and_ &= (uint8_t) hb1;
   this->st_ = S_F_SENDER_HI;
 }
 
-void IRAM_ATTR NibeBus::at_chk_(uint8_t b, uint32_t ts, bool hb1) {
-  this->census_(hb1, &this->b9_data_1_, &this->b9_data_0_);
-  this->f_b9_or_ |= (uint8_t) hb1;
-  this->f_b9_and_ &= (uint8_t) hb1;
-  uint8_t f_b9 = 0;  // probe annotations ride frame events: all1 / mixed (absent = all slots 0)
-  if (this->f_b9_and_ == 0xFF)
-    f_b9 = EVFL_FRAME_B9_ALL1;
-  else if (this->f_b9_or_ != this->f_b9_and_)
-    f_b9 = EVFL_FRAME_B9_MIXED;
+void IRAM_ATTR NibeBus::at_chk_(uint8_t b, uint32_t ts) {
   if (b != this->xor_run_ && this->chk_rescue_) {
     // len-lie rescue: some frames carry one byte more than len declares (0x71) — absorb, retest chk, once per frame
     this->chk_rescue_ = false;
@@ -357,7 +321,7 @@ void IRAM_ATTR NibeBus::at_chk_(uint8_t b, uint32_t ts, bool hb1) {
   if (b != this->xor_run_) {
     this->frames_bad_++;
     this->anomalies_++;
-    this->push_event_(EventT{ts, EV_FRAME_BAD, this->cmd_, this->sender_, this->f_len_, 0, f_b9});
+    this->push_event_(EventT{ts, EV_FRAME_BAD, this->cmd_, this->sender_, this->f_len_, 0});
     this->push_event_(EventT{ts, EV_ANOMALY, AN_DESYNC_HUNT, 0, 0, 0});
     this->st_ = S_HUNT;
     return;
@@ -375,7 +339,7 @@ void IRAM_ATTR NibeBus::at_chk_(uint8_t b, uint32_t ts, bool hb1) {
     arena = (uint16_t) off;
   }
   this->push_event_(EventT{ts, EV_FRAME, this->cmd_, this->sender_, this->f_len_, arena,
-                           (uint8_t) ((this->slot_ours_ ? EVFL_IN_OUR_SLOT : 0) | f_b9)});
+                           (uint8_t) (this->slot_ours_ ? EVFL_IN_OUR_SLOT : 0)});
   this->st_ = S_POST_FRAME;
 
   // push receipts fire late, when quiet (>= PUSH_ACK_DELAY_US; protocol.md) — earlier ACKs collide with bursts
@@ -395,25 +359,20 @@ void IRAM_ATTR NibeBus::at_chk_(uint8_t b, uint32_t ts, bool hb1) {
 }
 
 /// Frame is on the wire; expect the sender's ETX (an ACK may interleave).
-void IRAM_ATTR NibeBus::at_post_frame_(uint8_t b, uint32_t ts, bool hb1) {
+void IRAM_ATTR NibeBus::at_post_frame_(uint8_t b, uint32_t ts) {
   if (b == CTRL_ETX) {
-    this->census_(hb1, &this->b9_ctrl_1_, &this->b9_ctrl_0_);
-    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0, (uint8_t) (hb1 ? EVFL_CTRL_B9 : 0)});
+    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
     this->st_ = S_BOUNDARY;
   } else if (b == CTRL_ENQ) {
     // the polled node answers a master push with an immediate ENQ — grant/reply parse at the boundary
-    this->census_(hb1, &this->b9_ctrl_1_, &this->b9_ctrl_0_);
-    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0, (uint8_t) (hb1 ? EVFL_CTRL_B9 : 0)});
+    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
     this->st_ = S_BOUNDARY;
   } else if (b == CTRL_ACK || b == CTRL_NAK) {
-    this->census_(hb1, &this->b9_ctrl_1_, &this->b9_ctrl_0_);
-    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0, (uint8_t) (hb1 ? EVFL_CTRL_B9 : 0)});
+    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
   } else if (b == 0x00 || b == 0x41) {
     // missing ETX; salvage by treating the pair as the next poll and move on
     this->anomalies_++;
     this->push_event_(EventT{ts, EV_ANOMALY, AN_STRAY_CTRL, 0, 0, 0});
-    this->census_(hb1, &this->b9_poll_1_, &this->b9_poll_0_);
-    this->poll_hb1_ = hb1;
     this->poll_hi_ = b;
     this->st_ = S_POLL_HI;
   } else {
@@ -501,26 +460,24 @@ void IRAM_ATTR NibeBus::fire_pending_reply_(uint32_t now) {
 }
 
 void NibeBus::setup() {
+  if (this->emulator_role_ && (this->bus_ == nullptr || !this->bus_->bus_active())) {
+    ESP_LOGE(TAG, "role emulator requires rs485_bus 'active: true' — refusing to transmit (sniffer)");
+    this->emulator_role_ = false;
+  }
 #ifndef USE_SWITCH
   // switchless builds (host harness): arm at setup and start the request cycle — the panel's power-up behavior
-  if (this->role_ == Role::EMULATOR) {
+  if (this->emulator_role_) {
     this->armed_ = true;
     this->trigger_announce();
     ESP_LOGW(TAG, "no arm switch in this build: emulator armed at setup, requesting content");
   }
 #endif
-  if (this->role_ == Role::EMULATOR && this->bus_ != nullptr &&
-      !this->bus_->bus_active()) {
-    ESP_LOGE(TAG, "role %s requires rs485_bus 'active: true' — refusing to transmit (passive)",
-             this->role_name());
-    this->role_ = Role::PASSIVE;
-  }
   if (this->bus_ != nullptr)
     this->byte_us_ = 11u * (1000000u / this->bus_->get_baud_rate());  // 9-bit chars + stop
   ESP_LOGCONFIG(TAG, "NibeBus: %s role, address %04X", this->role_name(), this->my_addr_);
 #ifdef USE_ESP32
-  if (this->role_ != Role::EMULATOR)
-    return;  // passive builds never pace replies: skip the 125 us tick entirely
+  if (!this->emulator_role_)
+    return;  // sniffer builds never pace replies: skip the 125 us tick entirely
   if (this->reply_timer_ == nullptr) {
     esp_timer_create_args_t targs = {};
     targs.callback = &NibeBus::poll_reply_tick_;
@@ -637,14 +594,11 @@ void NibeBus::process_event_(const EventT &ev) {
       } else if (this->log_level_ >= 2) {
         ESP_LOGD(TAG, "poll %04X%s", ev.x, tail);
       }
-      if (this->log_level_ >= 2)
-        ESP_LOGD(TAG, "  b9 poll pair slot values: hi=%d lo=%d (1=mark; hypotheses.md 14)",
-                 (ev.flags & EVFL_POLL_B9_HI) ? 1 : 0, (ev.flags & EVFL_POLL_B9_LO) ? 1 : 0);
       break;
     }
     case EV_CTRL: {
       if (this->log_level_ >= 2)
-        ESP_LOGD(TAG, "ctrl %02X (slot %04X) b9=%d%s", ev.a, ev.x, (ev.flags & EVFL_CTRL_B9) ? 1 : 0, tail);
+        ESP_LOGD(TAG, "ctrl %02X (slot %04X)%s", ev.a, ev.x, tail);
       break;
     }
     case EV_TX: {
@@ -699,8 +653,6 @@ void NibeBus::process_event_(const EventT &ev) {
     }
     case EV_FRAME_BAD: {
       ESP_LOGW(TAG, "BAD frame cmd=%02X sender=%04X len=%u%s", ev.a, ev.x, ev.len, tail);
-      ESP_LOGW(TAG, "  b9 slots: %s", (ev.flags & EVFL_FRAME_B9_MIXED) ? "mixed" :
-                        ((ev.flags & EVFL_FRAME_B9_ALL1) ? "all 1" : "all 0"));
       break;
     }
     case EV_FRAME: {
@@ -717,9 +669,6 @@ void NibeBus::process_event_(const EventT &ev) {
         ESP_LOGD(TAG, "frame cmd=%02X sender=%04X len=%u data=%s%s", ev.a, ev.x, (unsigned) ev.len, hexbuf, tail);
         if (this->log_level_ >= 2)
           ESP_LOGD(TAG, "  intra-byte gap max: %lu us", (unsigned long) this->f_gap_report_us_);
-        if (this->log_level_ >= 2)
-          ESP_LOGD(TAG, "  b9 slots: %s", (ev.flags & EVFL_FRAME_B9_MIXED) ? "mixed" :
-                          ((ev.flags & EVFL_FRAME_B9_ALL1) ? "all 1" : "all 0"));
       }
 
       // display rows ONLY in our own slot — a probe must not count the panel's rows (dead-arms the pump)
@@ -908,7 +857,7 @@ void NibeBus::loop() {
   this->pump_announces_();
 
   // mute-turnaround dispatch: device = the 125 us esp_timer tick; loop() is the HOST tick only
-  if (this->role_ == Role::EMULATOR && this->bus_ != nullptr) {
+  if (this->emulator_role_ && this->bus_ != nullptr) {
 #ifndef USE_ESP32
     this->feed_paced_(this->bus_->now_us());  // host builds: loop is the feeder
     this->fire_pending_reply_(this->bus_->now_us());  // host builds: loop is the sole firer
@@ -955,11 +904,8 @@ void NibeBus::loop() {
                      evov = this->ev_overflow_;
       ESP_LOGI(TAG, "bus: frames ok=%u bad=%u polls_own=%u other=%u tx=%u txref=%u replydrop=%u gaps=%u echoes=%u anomalies=%u ev_drop=%u",
                f_ok, f_bad, p_own, p_other, txs, txr, rdrop, (unsigned) bs.gaps, ech, anom, evov);
-      // b9 census: per-byte-class slot readings; the verdict table lives in hypotheses.md 14
-      ESP_LOGI(TAG, "b9 census: polls 1:%u 0:%u | ctrl 1:%u 0:%u | frames 1:%u 0:%u | frm_err=%u par_err=%u gl=%u min_rx_delta=%lu us",
-               (unsigned) this->b9_poll_1_, (unsigned) this->b9_poll_0_,
-               (unsigned) this->b9_ctrl_1_, (unsigned) this->b9_ctrl_0_,
-               (unsigned) this->b9_data_1_, (unsigned) this->b9_data_0_,
+      // transport health: framing and parity errors are the corruption signals we keep
+      ESP_LOGI(TAG, "bus health: frm_err=%u par_err=%u gl=%u min_rx_delta=%lu us",
                (unsigned) bs.frm_errs, (unsigned) bs.par_errs, (unsigned) bs.glitches,
                (unsigned long) (bs.min_rx_delta_us == ~0u ? 0 : bs.min_rx_delta_us));
     }
@@ -977,8 +923,6 @@ void NibeBus::loop() {
         case 7: s->publish_state(this->ev_overflow_); break;
         case 8: s->publish_state(this->bus_ != nullptr ? this->bus_->stats().par_errs : 0); break;
         case 9: s->publish_state(this->bus_ != nullptr ? this->bus_->stats().frm_errs : 0); break;
-        case 10: s->publish_state(this->bus_ != nullptr ? this->bus_->stats().hb1 : 0); break;
-        case 11: s->publish_state(this->bus_ != nullptr ? this->bus_->stats().hb0 : 0); break;
       }
     }
     if (this->gap_sink_ != nullptr)
@@ -995,14 +939,13 @@ void NibeBus::dump_config() {
                 (this->rows_seen_ & 4) ? 1 : 0, this->announce_pump_active_ ? "ON" : "OFF",
                 this->menu_reply_ ? "ON" : "OFF");
   if (this->bus_ != nullptr)
-    ESP_LOGCONFIG(TAG, "  9-bit line: TX marks ENQ 1 / data 0; RX reads the slot permanently — "
-                       "census always on (hypotheses.md 14)");
+    ESP_LOGCONFIG(TAG, "  9-bit line: TX marks ENQ 1 / data 0; RX carries the slot as a per-byte fact");
   ESP_LOGCONFIG(TAG, "  engine timings: poll_reply %lu us, grant_frame %lu us, tx_byte_gap %lu us, "
                 "frame_close %lu us, push_ack %lu us, reply_drops %lu",
                 (unsigned long) POLL_REPLY_DELAY_US, (unsigned long) GRANT_FRAME_DELAY_US,
                 (unsigned long) TX_BYTE_GAP_US, (unsigned long) FRAME_CLOSE_DELAY_US,
                 (unsigned long) PUSH_ACK_DELAY_US, (unsigned long) this->reply_drops_);
-  ESP_LOGCONFIG(TAG, "  announce governor: burst %u, breath %u (content lands only in bare-ACK slots)",
+  ESP_LOGCONFIG(TAG, "  announce governor: burst %u, breath %u (policy; hypotheses.md 1)",
                 (unsigned) ANNOUNCE_BURST, (unsigned) ANNOUNCE_BREATH);
   ESP_LOGCONFIG(TAG, "  0xD4 clock answer: %s, tail 0x%02X (0=auto: day-of-week, Sunday=1; "
                 "answers only when the clock is valid)",

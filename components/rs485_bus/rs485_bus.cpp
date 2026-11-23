@@ -57,7 +57,7 @@ void RS485Bus::debug_dump_recent() {
     last_ts = rec.ts_us;
     if (rec.dir == DIR_TX)  // our own transmissions, visually distinct from bus bytes
       p += snprintf(buf + p, sizeof(buf) - p, "[%02X]%s", rec.byte, dt > 2000 ? "|" : " ");
-    else if (rec.dir & DIR_HB9)  // probe mode: parity slot sampled 1 -> ^ after the byte
+    else if (rec.dir & DIR_HB9)  // ninth bit read 1 -> ^ after the byte
       p += snprintf(buf + p, sizeof(buf) - p, "%02X^%s", rec.byte, dt > 2000 ? "|" : " ");
     else
       p += snprintf(buf + p, sizeof(buf) - p, "%02X%s", rec.byte, dt > 2000 ? "|" : " ");
@@ -103,11 +103,6 @@ void IRAM_ATTR RS485Bus::uart_isr_(void *arg) {
         uint8_t hb = (par != 0) ^ (__builtin_parity(b) != 0);
         if (par)
           self->stats_.par_errs++;
-        if (hb) {
-          self->stats_.hb1++;
-        } else {
-          self->stats_.hb0++;
-        }
         uint8_t flags = hb ? RXF_HB9 : 0;
         self->stats_.rx_bytes++;
         self->last_rx_ts_ = bts;
@@ -209,7 +204,7 @@ void RS485Bus::hw_setup_() {
   uart_ll_set_sclk(hw, (soc_module_clk_t) UART_SCLK_APB);  // 80 MHz on S3
   uart_ll_set_baudrate(hw, this->baud_, 80000000);
   uart_ll_set_data_bit_num(hw, UART_DATA_8_BITS);
-  uart_ll_set_parity(hw, UART_PARITY_EVEN);  // the 9th marking slot: RX samples it, TX emits it (hypotheses.md 14)
+  uart_ll_set_parity(hw, UART_PARITY_EVEN);  // the 9th marking slot: RX samples it, TX emits it (hypotheses.md 15)
   uart_ll_set_stop_bits(hw, UART_STOP_BITS_1);
   uart_ll_set_mode_rs485_app_ctrl(hw);  // receiver muted while transmitting: no echo
 
@@ -363,7 +358,7 @@ void RS485Bus::setup() {
   this->ring_ = new BusRecord[pow2];
 
   this->gap_us_ = this->gap_symbols_ * (10000000u / this->baud_);
-  this->stats_.min_rx_delta_us = ~0u;  // census sentinel: min still unseen
+  this->stats_.min_rx_delta_us = ~0u;  // min still unseen
 
 #ifdef USE_ESP32
   if (!this->is_stream())
@@ -459,7 +454,7 @@ void RS485Bus::dump_config() {
   ESP_LOGCONFIG(TAG, "  baud: %u, gap: %u byte-times (~%u us)", (unsigned) this->baud_,
                 (unsigned) this->gap_symbols_, (unsigned) this->gap_us_);
   ESP_LOGCONFIG(TAG, "  active: %d", this->active_);
-  ESP_LOGCONFIG(TAG, "  line: 9-bit, marking slot on TX+RX (engine passes per-byte marks; docs/hypotheses.md 14)");
+  ESP_LOGCONFIG(TAG, "  line: 9-bit, marking slot on TX+RX (engine passes per-byte marks; docs/hypotheses.md 15)");
   ESP_LOGCONFIG(TAG, "  engine attached: %s", this->engine_ != nullptr ? "yes" : "no");
 }
 

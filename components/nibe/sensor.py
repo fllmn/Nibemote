@@ -27,8 +27,6 @@ COUNTERS = {
     "ev_dropped": 7,
     "parity_errors": 8,
     "framing_errors": 9,
-    "slot_ones": 10,
-    "slot_zeros": 11,
 }
 
 def _validate(config):

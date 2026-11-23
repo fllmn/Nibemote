@@ -33,14 +33,14 @@ namespace esphome::rs485_bus {
 static constexpr size_t MAX_BURST = 96;  // one EN-high burst (hw fifo is 128; keep headroom)
 
 enum RecordDir : uint8_t { DIR_RX = 0, DIR_TX = 1 };
-static constexpr uint8_t DIR_HB9 = 0x80;    // RX record: hidden parity-slot bit reads 1 (probe mode only)
-static constexpr uint8_t RXF_HB9 = 0x80;     // on_rx_byte flags: the byte's parity slot carried 1
+static constexpr uint8_t DIR_HB9 = 0x80;  // RX record: the byte's ninth (marking) bit read 1
+static constexpr uint8_t RXF_HB9 = 0x80;  // on_rx_byte flags: the byte carried the ninth bit
 
 /// One byte on the wire as seen by this device.
 struct BusRecord {
   uint32_t ts_us;  // µs timestamp at byte event (wraps ~71.6 min; deltas are what matter)
   uint8_t byte;
-  uint8_t dir;  // RecordDir (+DIR_HB9 on RX records in probe mode)
+  uint8_t dir;  // RecordDir (+DIR_HB9 when the byte's ninth bit read 1)
 } __attribute__((packed));
 
 /// Task-context consumer of the raw byte stream (called from loop(), never ISR).
@@ -53,7 +53,7 @@ class BusRecordListener {
 /// Engine hooks: raw UART ISR context on hardware — ISR-safe: IRAM code, DRAM data, no locks/log/virtual.
 /// Stream mode calls them from loop(); the engine cannot tell which context it is in.
 struct EngineHooks {
-  // flags: per-byte RXF_* bits — RXF_HB9 set when the byte's parity slot sampled 1 (probe mode; 0 otherwise)
+  // flags: per-byte RXF_* bits — RXF_HB9 set when the byte carried the ninth (marking) bit
   void (*on_rx_byte)(void *ctx, uint8_t byte, uint32_t ts_us, uint8_t flags) = nullptr;
   void (*on_gap)(void *ctx, uint32_t ts_us) = nullptr;
   void (*on_tx_done)(void *ctx, uint32_t ts_us) = nullptr;
@@ -63,9 +63,8 @@ struct BusStats {
   uint32_t rx_bytes, tx_bytes;
   uint32_t rx_hw_overflows;  // UART hw FIFO overran (bytes lost — engine recovers on next gap)
   uint32_t frm_errs;         // stop-bit slot sampled 0 (per-byte, does not cascade; see docs/hypotheses.md)
-  uint32_t par_errs;         // parity-slot mismatch (probe mode: the hidden 9th bit differs from even parity)
+  uint32_t par_errs;         // the ninth bit differed from even parity (corruption signal)
   uint32_t glitches;         // glitch-detector ints (line noise)
-  uint32_t hb1, hb0;          // probe census: bytes whose parity slot sampled 1 vs 0
   uint32_t min_rx_delta_us;  // smallest byte-to-byte RX delta seen (~char width: 8N1=~521, 9N1=~573 @19200)
   uint32_t ring_overflows;   // trace ring full (log data dropped, engine unaffected)
   uint32_t tx_bursts, tx_refused;

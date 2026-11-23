@@ -66,10 +66,7 @@ async def to_code(config):
     bus = await cg.get_variable(config[CONF_RS485_BUS_ID])
     cg.add(var.attach_to(bus))
     cg.add(var.set_address(config[CONF_ADDRESS]))
-    if config[CONF_ROLE] == ROLE_EMULATOR:
-        cg.add(var.set_role(cg.RawExpression("esphome::nibe::Role::EMULATOR")))
-    else:
-        cg.add(var.set_role(cg.RawExpression("esphome::nibe::Role::PASSIVE")))
+    cg.add(var.set_emulator_role(config[CONF_ROLE] == ROLE_EMULATOR))
     cg.add(var.set_menu_reply(config[CONF_MENU_REPLY]))
     if config[CONF_DISPLAY_WEB_PORT]:
         cg.add(var.set_display_web_port(config[CONF_DISPLAY_WEB_PORT]))

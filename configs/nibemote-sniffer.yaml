@@ -6,9 +6,9 @@
 # the real panel's key frames — all the data needed to re-verify the protocol
 # assumptions in docs/protocol.md before the emulator is ever allowed on the bus.
 #
-# 9-bit line mode: the bus physically carries a 9th marking slot (hypotheses.md
-# item 14). This build reads it permanently — the b9 census line prints every
-# 10 s and the parity-slot sensors count it; nothing here transmits.
+# 9-bit line mode: the bus physically carries a 9th marking slot (protocol.md).
+# The transport reads it on every byte and always marks its own ENQ 1 / data 0;
+# nothing here transmits.
 #
 # Hardware (Waveshare ESP32-S3-Relay-1CH):
 #   RS485 A/B   -> VVM300 display RJ45 (the display stays connected!)
@@ -108,15 +108,7 @@ sensor:
   - platform: nibe
     nibe_id: nibe_bus
     counter: framing_errors
-    name: "Framing errors (slot=0 bytes)"
-  - platform: nibe
-    nibe_id: nibe_bus
-    counter: slot_ones
-    name: "Bytes with parity slot 1"
-  - platform: nibe
-    nibe_id: nibe_bus
-    counter: slot_zeros
-    name: "Bytes with parity slot 0"
+    name: "Framing errors (stop bit = 0)"
   - platform: nibe
     nibe_id: nibe_bus
     last_gap_ms: true

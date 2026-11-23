@@ -102,8 +102,6 @@ class NibeButton : public button::Button, public Component {
 };
 #endif
 
-enum class Role : uint8_t { PASSIVE = 0, EMULATOR = 1 };
-
 /// Event record produced by the engine (ISR) and consumed by loop().
 struct EventT {
   uint32_t ts;
@@ -115,12 +113,6 @@ struct EventT {
   uint8_t flags;     // bit0: the exchange was in OUR slot (polled our address)
 };
 static constexpr uint8_t EVFL_IN_OUR_SLOT = 0x01;
-// probe-mode b9 annotations (valid only while the bus parity-slot probe is armed; docs/hypotheses.md)
-static constexpr uint8_t EVFL_POLL_B9_HI = 0x02;    // EV_POLL: poll-pair hi byte parity slot read 1
-static constexpr uint8_t EVFL_POLL_B9_LO = 0x04;    // EV_POLL: poll-pair lo byte parity slot read 1
-static constexpr uint8_t EVFL_FRAME_B9_ALL1 = 0x02;  // EV_FRAME: every frame byte carried 1 in the parity slot
-static constexpr uint8_t EVFL_FRAME_B9_MIXED = 0x04;  // EV_FRAME: slot value differed across frame bytes
-static constexpr uint8_t EVFL_CTRL_B9 = 0x02;       // EV_CTRL: this control byte's parity slot read 1
 
 enum EventType : uint8_t {
   EV_POLL,        // x: polled node address
@@ -157,7 +149,8 @@ static constexpr size_t TX_FRAME_MAX = 64;  // engine frame bytes incl. ETX
 //   TX_BYTE_GAP_US        native nodes pace bytes (110-285 us idle, ~650 us/byte)
 //   FRAME_CLOSE_DELAY_US  sender-closes: our ETX ~+670 us after the master receipt
 //   PUSH_ACK_DELAY_US     pushes are receipt-ACKed at ~15.4 ms; earlier unproven
-//   ANNOUNCE_BURST/BREATH 2 ENQ polls then 2 bare ACKs (content lands in bare slots)
+//   ANNOUNCE_BURST/BREATH 2 ENQ polls then 2 bare ACKs — emulator policy,
+//                          not a wire fact (hypotheses.md 1)
 //   NO_POLL_TIMEOUT_S     safety: drop the outbound queue when our polls stop
 static constexpr uint32_t POLL_REPLY_DELAY_US = 2400;
 static constexpr uint32_t GRANT_FRAME_DELAY_US = 160;
@@ -173,10 +166,13 @@ class NibeBus : public Component {
   void setup() override;
   void loop() override;
   void dump_config() override;
-  void set_role(Role role) { this->role_ = role; }
+  void set_emulator_role(bool on) { this->emulator_role_ = on; }
   /// runtime arm/off gate (switch entity); the ISR paths check emulating()
   void set_armed(bool armed) { this->armed_ = armed; }
-  bool emulating() const { return this->role_ == Role::EMULATOR && this->armed_; }
+  /// emulator intent AND a transmit-capable transport AND the arm switch — never one alone
+  bool emulating() const {
+    return this->emulator_role_ && this->armed_ && this->bus_ != nullptr && this->bus_->bus_active();
+  }
   /// cmd-0x40 data[1] in request AND key frames: a relaid system value, no protocol meaning (commands.md).
   void set_request_byte(uint8_t b) { this->request_byte_ = b; }
   void set_address(uint16_t address) { this->my_addr_ = address; }
@@ -254,13 +250,12 @@ class NibeBus : public Component {
   /// Re-announce: clears the rows latch and re-arms the request pump (arm switch or Re-announce button).
   bool trigger_announce();
 
-  Role get_role() const { return this->role_; }
   uint16_t get_address() const { return this->my_addr_; }
+  /// what this build is: a sniffer, or an emulator that is transmitting or merely armed
   const char *role_name() const {
-    switch (this->role_) {
-      case Role::EMULATOR: return "emulator";
-      default: return "passive";
-    }
+    if (!this->emulator_role_)
+      return "sniffer";
+    return this->emulating() ? "emulator" : "emulator (unarmed)";
   }
 
  protected:
@@ -291,19 +286,12 @@ class NibeBus : public Component {
 
 
   // byte-level FSM dispatchers (all ISR-safe)
-  void at_boundary_(uint8_t b, uint32_t ts, bool hb1);
-  void at_poll_lo_(uint8_t b, uint32_t ts, bool hb1);
-  void at_ctrl_(uint8_t b, uint32_t ts, bool hb1);
-  void at_chk_(uint8_t b, uint32_t ts, bool hb1);
-  void at_post_frame_(uint8_t b, uint32_t ts, bool hb1);
-  void begin_frame_(uint8_t cmd, bool hb1);
-  /// probe census: bump the (slot=1, slot=0) pair for this byte class (ISR)
-  inline void IRAM_ATTR census_(bool hb1, uint32_t *c1, uint32_t *c0) {
-    if (hb1)
-      (*c1)++;
-    else
-      (*c0)++;
-  }
+  void at_boundary_(uint8_t b, uint32_t ts);
+  void at_poll_lo_(uint8_t b, uint32_t ts);
+  void at_ctrl_(uint8_t b, uint32_t ts);
+  void at_chk_(uint8_t b, uint32_t ts);
+  void at_post_frame_(uint8_t b, uint32_t ts);
+  void begin_frame_(uint8_t cmd);
 
   enum State : uint8_t {
     S_BOUNDARY,    // exchange boundary: poll-pair candidate, frame start, or stray control
@@ -320,7 +308,7 @@ class NibeBus : public Component {
   };
   State st_{S_BOUNDARY};
 
-  Role role_{Role::PASSIVE};
+  bool emulator_role_{false};         // config intent: this build impersonates the panel
   volatile bool armed_{false};  // staged: only the arm switch (or switchless
                                   // host builds, armed in setup()) can raise this
   uint16_t my_addr_{ADDR_DISPLAY};
@@ -339,13 +327,6 @@ class NibeBus : public Component {
   bool chk_rescue_{true};  // one data-extension retry per frame (len-lie fix)
   volatile uint32_t f_max_gap_us_{0};    // worst body-byte gap of the frame in flight (µs)
   volatile uint32_t f_gap_report_us_{0}; // last completed frame's worst gap (log)
-
-  // probe census: per-byte-class parity-slot counters (ISR; hypotheses.md 14)
-  bool poll_hb1_{false};       // poll-pair hi byte slot value (pairs with the lo byte at poll completion)
-  uint8_t f_b9_or_{0}, f_b9_and_{0xFF};  // per-frame slot OR/AND — uniform/mixed readout on completion
-  uint32_t b9_poll_1_{0}, b9_poll_0_{0};
-  uint32_t b9_ctrl_1_{0}, b9_ctrl_0_{0};
-  uint32_t b9_data_1_{0}, b9_data_0_{0};
 
   uint8_t f_data_[FRAME_MAX_DATA];
   volatile uint32_t last_byte_ts_{0};
