@@ -3,9 +3,9 @@
 A Waveshare ESP32-S3-Relay-1CH replaces the VVM300's display card (bus address
 `0x00F9`) on the pump's internal RS485 bus — 19200 baud, Nibe 9-bit legacy
 framing (not Modbus). The VVM300 keeps serving its display rows; the ESP
-publishes them to Home Assistant / MQTT and a built-in web page, and sends
-button and knob input back as display key events. A sniffer build (listens
-only, never transmits) is included for wire debugging.
+publishes them to Home Assistant using esphome's builtin interface and a
+built-in web page, and sends button and knob input back as display key events.
+A sniffer build (listens only, never transmits) is included for wire debugging.
 
 The whole exchange engine runs from the UART ISR: replies leave within
 microseconds of the poll and a byte can never leak into another node's
@@ -29,7 +29,7 @@ make flash-sniffer                                    # passive listener (OTA)
 ```
 
 First-ever flash is over USB-C (see docs/bring-up.md); `DEVICE=` overrides
-the OTA address.
+the OTA address. Adoption into the Esphome controller required for Home Assistant.
 
 ## Layout
 
