@@ -63,7 +63,7 @@ struct BusStats {
   uint32_t rx_bytes, tx_bytes;
   uint32_t rx_hw_overflows;  // UART hw FIFO overran (bytes lost — engine recovers on next gap)
   uint32_t frm_errs;         // stop-bit slot sampled 0 (per-byte, does not cascade; see docs/hypotheses.md)
-  uint32_t par_errs;         // the ninth bit differed from even parity (corruption signal)
+  uint32_t par_errs;         // bytes whose ninth bit differed from even parity: this line's mark readout, not corruption
   uint32_t glitches;         // glitch-detector ints (line noise)
   uint32_t min_rx_delta_us;  // smallest byte-to-byte RX delta seen (~char width: 8N1=~521, 9N1=~573 @19200)
   uint32_t ring_overflows;   // trace ring full (log data dropped, engine unaffected)

@@ -32,6 +32,9 @@ compile: env ## compile both device builds + the host build
 	  $(ESPHOME) compile configs/$$c.yaml >/dev/null || exit 1; done
 	@echo "all configs compiled"
 
+iram-audit: ## fail if an ISR-path symbol sits in flash (after a device build)
+	@$(PY) tools/iram_audit.py configs/.esphome/build/nibemote/build/firmware.elf
+
 sim: env ## run the host build against sim/vvm300_sim.py (all checks must pass)
 	@$(ESPHOME) run configs/nibemote-host.yaml > /tmp/nibemote-host-run.log 2>&1 & \
 	  host=$$!; trap 'kill $$host 2>/dev/null' EXIT; \
@@ -42,7 +45,7 @@ sim: env ## run the host build against sim/vvm300_sim.py (all checks must pass)
 	  if [ $$ok -ne 1 ]; then echo "host firmware never opened tcp_uart 6638 (see /tmp/nibemote-host-run.log)" >&2; exit 1; fi; \
 	  $(PY) sim/vvm300_sim.py; rc=$$?; kill $$host 2>/dev/null; exit $$rc
 
-gate: validate compile sim ## pre-commit gate (AGENTS.md: validate + compile + host sim)
+gate: validate compile iram-audit sim ## pre-commit gate (AGENTS.md: validate + compile + IRAM audit + host sim)
 
 flash: env ## OTA-flash CONFIG to DEVICE (default: display emulator)
 	$(ESPHOME) upload --device $(DEVICE) $(CONFIG)

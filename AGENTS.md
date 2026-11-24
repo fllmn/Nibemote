@@ -2,7 +2,7 @@
 
 ## Commands
 - Toolchain is repo-local, uv-managed: pyproject.toml declares esphome, uv.lock pins the resolution, .python-version pins 3.13; `make env` (= `uv sync`) provisions .venv; binary at `.venv/bin/esphome`.
-  - `make gate` — the pre-commit verification: validate + compile every config, then the host build against the sim (all checks must pass).
+  - `make gate` — the pre-commit verification: validate + compile every config, IRAM-audit the device image, then the host build against the sim (all checks must pass).
   - `make flash-emulator` / `make flash-sniffer` — network OTA to the device (`DEVICE=10.42.0.131` by default; `CONFIG=`/`DEVICE=` override).
   - `make logs` — tail the device; `make sim` — the sim gate alone; `make distclean` — drop builds + .venv.
   - Raw esphome works too: `.venv/bin/esphome config|compile|upload configs/nibemote.yaml`.
