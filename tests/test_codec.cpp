@@ -2,7 +2,7 @@
 // Run with `make test`; the gate runs it after compiling the firmware.
 #include <cstdio>
 
-#include "nibe_decode.h"
+#include "nibe_codec.h"
 
 using namespace esphome::nibe;
 
@@ -41,6 +41,7 @@ int main() {
     CHECK(f2025_word(f, 1, &w) && w == 10);
     CHECK(f2025_word(f, 2, &w) && w == 100);
     CHECK(f2025_word(f, 4, &w) && w == 372);   // 0x0174
+    CHECK(f2025_word(f, 8, &w));               // last complete word: bytes 16..17
     CHECK(!f2025_word(f, 9, &w));              // past the 18 payload bytes
     CHECK(celsius_from_tenths(-70) == -7.0f);
     CHECK(celsius_from_tenths(372) == 37.2f);
@@ -70,24 +71,63 @@ int main() {
     CHECK(!parse_register_request(f2, &reg));
     FrameView short_req{CMD_REG_READ, ADDR_VVM300, req, 1};
     CHECK(!parse_register_request(short_req, &reg));
+    const uint8_t long_req[3] = {0x05, 0x11, 0x00};
+    FrameView f3{CMD_REG_READ, ADDR_VVM300, long_req, sizeof(long_req)};
+    CHECK(!parse_register_request(f3, &reg));  // a read carries exactly `05 <reg>`
+  }
+
+  // --- register pairing: node-bound, one answer, closed by a poll to another node ---
+  {
+    const uint8_t ans[1] = {0x00};
+    FrameView answer{CMD_REG_READ, ADDR_F2025, ans, sizeof(ans)};
+    RegisterPairing p;
+    uint8_t reg = 0;
+
+    p.request(0x11, ADDR_F2025);
+    p.poll(ADDR_F2025);  // the node's next turn is its answer's exchange
+    CHECK(p.answer(answer, &reg) && reg == 0x11);
+    p.clear();
+    CHECK(!p.answer(answer, &reg));  // consumed after one answer
+
+    p.request(0x22, ADDR_F2025);
+    p.poll(ADDR_RELAY);  // master moved on
+    CHECK(!p.answer(answer, &reg));
+
+    p.request(0x33, ADDR_F2025);
+    FrameView other{CMD_REG_READ, ADDR_RELAY, ans, sizeof(ans)};
+    CHECK(!p.answer(other, &reg));  // another node is not this answer
+
+    p.clear();
+    p.request(0x44, ADDR_F2025);
+    FrameView wrong{CMD_STATUS, ADDR_F2025, ans, sizeof(ans)};
+    CHECK(!p.answer(wrong, &reg));
+    CHECK(is_register_answer(answer, ADDR_F2025));
+    CHECK(!is_register_answer(answer, ADDR_RELAY));
   }
 
   // --- D4 clock answer: BCD yy mm dd hh mm ss + tail ---
   {
-    CHECK(bcd_encode(0) == 0x00);
-    CHECK(bcd_encode(9) == 0x09);
-    CHECK(bcd_encode(26) == 0x26);
-    CHECK(bcd_encode(99) == 0x99);
     uint8_t out[7] = {0};
     encode_d4_clock(2026, 11, 24, 9, 5, 7, 2, out);
     const uint8_t want[7] = {0x26, 0x11, 0x24, 0x09, 0x05, 0x07, 0x02};
     for (int i = 0; i < 7; i++)
       CHECK(out[i] == want[i]);
+
+    uint8_t edge[7] = {0};
+    encode_d4_clock(2000, 1, 2, 0, 0, 0, 1, edge);  // BCD zeros, single digits
+    CHECK(edge[0] == 0x00 && edge[1] == 0x01 && edge[2] == 0x02 && edge[6] == 0x01);
+
+    uint8_t n99[7] = {0};
+    encode_d4_clock(2099, 99, 99, 23, 59, 59, 32, n99);  // upper BCD digits
+    CHECK(n99[0] == 0x99 && n99[1] == 0x99 && n99[3] == 0x23 && n99[5] == 0x59);
+
+    CHECK(d4_tail_byte(0, 3) == 3);  // 0 = auto: the day of week
+    CHECK(d4_tail_byte(5, 3) == 5);  // configured override
   }
 
   if (failures == 0)
-    std::printf("decode tests: all checks passed\n");
+    std::printf("codec tests: all checks passed\n");
   else
-    std::printf("decode tests: %d check(s) FAILED\n", failures);
+    std::printf("codec tests: %d check(s) FAILED\n", failures);
   return failures == 0 ? 0 : 1;
 }

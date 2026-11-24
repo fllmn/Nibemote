@@ -7,7 +7,7 @@
 #include "esphome/components/rs485_bus/rs485_bus.h"
 #include "esphome/core/component.h"
 #include "esphome/core/log.h"
-#include "nibe_decode.h"
+#include "nibe_codec.h"
 #include "nibe_frame.h"
 #include "nibe_queries.h"
 #include "nibe_screen.h"
@@ -398,8 +398,7 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   volatile uint32_t polls_own_{0}, polls_other_{0};
   volatile uint32_t echo_filtered_{0}, anomalies_{0}, tx_sent_{0}, tx_refused_{0};
   volatile uint32_t last_gap_us_{0};
-  uint8_t last_reg_query_{0};           // the master's last 0x72 register request (passive pairing)
-  bool last_reg_query_valid_{false};    // ...still open for an answer in this exchange
+  RegisterPairing reg_pairing_;  // passive 0x72 request/answer pairing
 
   ScreenState screen_;  // what the panel shows: rows, symbol strip, knob
 

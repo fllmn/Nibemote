@@ -535,7 +535,8 @@ void NibeBus::drain_tx_notices_() {
 }
 
 void NibeBus::on_poll(uint32_t ts, uint16_t addr) {
-  this->last_reg_query_valid_ = false;  // a new exchange opens: any pending register answer is gone
+  // a poll to another node closes any pending register pairing (the answer stays in its node's turn)
+  this->reg_pairing_.poll(addr);
   char tail[28];
   this->tail_(ts, tail, sizeof(tail));
   if (addr != this->my_addr_) {
@@ -700,16 +701,19 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
   }
 #endif
 
-  // passive register pairing: the master's 0x72 request names the register; a 0x72 from another
-  // node before the next poll is its answer. The value grammar is still open, so log the raw bytes.
+  // passive register pairing: the master's 0x72 request names the register and the node it is
+  // addressed to (the polled slot); that node's 0x72 before the master moves on is its answer.
+  // The value grammar is still open, so log the raw bytes.
   if (cmd == CMD_REG_READ) {
     uint8_t reg = 0;
-    if (sender == ADDR_VVM300 && parse_register_request(view, &reg)) {
-      this->last_reg_query_ = reg;
-      this->last_reg_query_valid_ = true;
-    } else if (sender != ADDR_VVM300 && this->last_reg_query_valid_) {
-      ESP_LOGI(TAG, "register 0x%02X answer: %s", this->last_reg_query_, hexbuf);
-      this->last_reg_query_valid_ = false;  // one answer per request
+    if (sender == ADDR_VVM300) {
+      if (parse_register_request(view, &reg))
+        this->reg_pairing_.request(reg, this->parser_.polled_addr());
+      else
+        this->reg_pairing_.clear();  // a malformed master 0x72 must not leave an old request armed
+    } else if (this->reg_pairing_.answer(view, &reg)) {
+      ESP_LOGI(TAG, "register 0x%02X answer: %s", reg, hexbuf);
+      this->reg_pairing_.clear();  // one answer per request
     }
   }
 
@@ -746,7 +750,7 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
     if (!t.is_valid()) {
       ESP_LOGW(TAG, "master 0xD4 clock query: our clock is not synced/valid — not answering");
     } else {
-      uint8_t d4_tail = this->d4_tail_ != 0 ? this->d4_tail_ : t.day_of_week;
+      uint8_t d4_tail = d4_tail_byte(this->d4_tail_, t.day_of_week);
       uint8_t data[7];
       encode_d4_clock(t.year, (uint8_t) t.month, (uint8_t) t.day_of_month, (uint8_t) t.hour,
                       (uint8_t) t.minute, (uint8_t) t.second, d4_tail, data);

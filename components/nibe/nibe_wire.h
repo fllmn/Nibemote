@@ -50,6 +50,8 @@ class ExchangeParser {
   /// Drop partial frame state (used when the wire ring lost bytes and the stream is torn).
   void reset();
 
+  /// The node polled in the open exchange: the context a frame in that slot belongs to.
+  uint16_t polled_addr() const { return this->polled_addr_; }
   uint32_t frames_ok() const { return this->frames_ok_; }
   uint32_t frames_bad() const { return this->frames_bad_; }
   /// worst byte-to-byte gap inside the last completed frame (µs)

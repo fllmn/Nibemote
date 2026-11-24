@@ -6,6 +6,7 @@
 
 ESPHOME := .venv/bin/esphome
 PY      := .venv/bin/python
+CXX     ?= c++
 
 DEVICE  ?= 10.42.0.131             # the Waveshare ESP32-S3 on the bus (network OTA)
 CONFIG  ?= configs/nibemote.yaml  # default flash/logs target: the display emulator
@@ -14,7 +15,7 @@ DEVICE_CONFIGS := nibemote nibemote-sniffer
 ALL_CONFIGS    := $(DEVICE_CONFIGS) nibemote-host
 
 .DEFAULT_GOAL := help
-.PHONY: help env validate compile sim gate flash flash-emulator flash-sniffer logs clean distclean
+.PHONY: help env validate compile sim gate test iram-audit flash flash-emulator flash-sniffer logs clean distclean
 
 help: ## list targets
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n",$$1,$$2}'
@@ -32,9 +33,9 @@ compile: env ## compile both device builds + the host build
 	  $(ESPHOME) compile configs/$$c.yaml >/dev/null || exit 1; done
 	@echo "all configs compiled"
 
-test: ## plain-C++ tests for the pure decode/encode helpers
-	@$(CXX) -std=c++20 -Wall -Wextra -Werror -O1 -Icomponents/nibe tests/test_decode.cpp components/nibe/nibe_decode.cpp -o /tmp/nibemote-decode-test
-	@/tmp/nibemote-decode-test
+test: ## plain-C++ tests for the pure codec helpers
+	@$(CXX) -std=c++20 -Wall -Wextra -Werror -O1 -Icomponents/nibe tests/test_codec.cpp components/nibe/nibe_codec.cpp -o /tmp/nibemote-codec-test
+	@/tmp/nibemote-codec-test; rc=$$?; rm -f /tmp/nibemote-codec-test; exit $$rc
 
 iram-audit: ## fail if an ISR-path symbol sits in flash (after a device build)
 	@$(PY) tools/iram_audit.py configs/.esphome/build/nibemote/build/firmware.elf
