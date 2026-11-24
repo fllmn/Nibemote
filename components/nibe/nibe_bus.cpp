@@ -536,7 +536,8 @@ void NibeBus::ex_start_(uint32_t ts, uint16_t addr) {
   this->ex_last_ms_ = esphome::millis();
 }
 
-void NibeBus::ex_add_(uint32_t ts, uint8_t kind, uint8_t a, uint16_t x, const uint8_t *data, uint8_t len) {
+void NibeBus::ex_add_(uint32_t ts, uint8_t kind, uint8_t a, uint16_t x, const uint8_t *data, uint8_t len,
+                      bool marked) {
   if (!this->ex_open_ || this->ex_count_ >= EX_LOG_N)
     return;
   ExEntry &e = this->ex_[this->ex_count_++];
@@ -544,6 +545,7 @@ void NibeBus::ex_add_(uint32_t ts, uint8_t kind, uint8_t a, uint16_t x, const ui
   e.kind = kind;
   e.a = a;
   e.x = x;
+  e.marked = marked;
   e.len = len > EX_LOG_DATA ? (uint8_t) EX_LOG_DATA : len;
   if (data != nullptr && e.len > 0)
     memcpy(e.data, data, e.len);
@@ -573,7 +575,8 @@ void NibeBus::ex_flush_() {
     const ExEntry &e = this->ex_[i];
     const char *dir = (e.kind == EX_CTRL_TX || e.kind == EX_FRAME_TX) ? "tx" : "rx";
     if (e.kind == EX_CTRL_TX || e.kind == EX_CTRL_RX) {
-      p += snprintf(line + p, sizeof(line) - (size_t) p, " | %s %02X %s", dir, e.a, ctrl_name_(e.a));
+      p += snprintf(line + p, sizeof(line) - (size_t) p, " | %s %02X %s%s", dir, e.a, ctrl_name_(e.a),
+                    e.marked ? "*" : "");
     } else {
       char data[3 * EX_LOG_DATA + 1];
       render_data_(data, sizeof(data), e.a, e.data, e.len);
@@ -606,7 +609,7 @@ void NibeBus::drain_tx_notices_() {
     this->tail_(n.ts, tail, sizeof(tail));
     switch (n.kind) {
       case TXN_REPLY:
-        this->ex_add_(n.ts, EX_CTRL_TX, n.byte, 0, nullptr, 0);
+        this->ex_add_(n.ts, EX_CTRL_TX, n.byte, 0, nullptr, 0, n.byte == CTRL_ENQ);
         if (this->log_level_ >= 2)
           ESP_LOGI(TAG, "tx: %02X len=%u%s", n.byte, n.len, tail);
         break;
@@ -618,7 +621,7 @@ void NibeBus::drain_tx_notices_() {
           fbuf[i] = this->tx_log_buf_[i];
         const bool framed = len >= 5 && fbuf[0] == n.byte;
         this->ex_add_(n.ts, EX_FRAME_TX, n.byte, this->my_addr_, framed ? &fbuf[4] : fbuf,
-                      framed ? fbuf[3] : 0);
+                      framed ? fbuf[3] : 0, false);
         if (this->log_level_ >= 2) {
           ESP_LOGI(TAG, "tx: %02X len=%u%s", n.byte, n.len, tail);
           if (len >= 5 && fbuf[0] == n.byte) {
@@ -672,8 +675,8 @@ void NibeBus::on_poll(uint32_t ts, uint16_t addr) {
   // no self-close: the MASTER closes idle exchanges — our self-close collided with its close and corrupted the bus
 }
 
-void NibeBus::on_ctrl(uint32_t ts, uint8_t byte, uint16_t ctx) {
-  this->ex_add_(ts, EX_CTRL_RX, byte, ctx, nullptr, 0);
+void NibeBus::on_ctrl(uint32_t ts, uint8_t byte, uint16_t ctx, bool marked) {
+  this->ex_add_(ts, EX_CTRL_RX, byte, ctx, nullptr, 0, marked);
   char tail[28];
   this->tail_(ts, tail, sizeof(tail));
   if (this->log_level_ >= 2)
@@ -723,7 +726,7 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
   this->tail_(ts, tail, sizeof(tail));
   const uint8_t n = len > FRAME_MAX_DATA ? (uint8_t) FRAME_MAX_DATA : len;
   const FrameView view{cmd, sender, payload, n};
-  this->ex_add_(ts, EX_FRAME_RX, cmd, sender, payload, n);
+  this->ex_add_(ts, EX_FRAME_RX, cmd, sender, payload, n, false);
   char hexbuf[3 * FRAME_MAX_DATA + 1];
   hexbuf[0] = 0;
   hex_(hexbuf, sizeof(hexbuf), payload, n);
@@ -909,7 +912,7 @@ void NibeBus::emulator_push_ack_tick_() {
   uint8_t ack = CTRL_ACK;  // stack copy (kept off flash on every path, as usual)
   if (this->bus_->send_burst(&ack, 1, false)) {
     this->tx_sent_++;
-    this->ex_add_(now, EX_CTRL_TX, CTRL_ACK, 0, nullptr, 0);
+    this->ex_add_(now, EX_CTRL_TX, CTRL_ACK, 0, nullptr, 0, false);
   } else {
     this->tx_refused_++;
   }

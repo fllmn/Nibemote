@@ -73,7 +73,9 @@ shell on the heating bus.
 ```
 
 `tx` is us, `rx` is the master or another node (frames show their sender); rows 2–4
-render as text, other frames as hex. The exchange line appears when the next poll
+render as text, other frames as hex. `*` after a control byte means its ninth bit read
+1: `rx 03 ETX*` is the master closing its push, plain `ETX` is a node closing its own
+frame (and `tx 05 ENQ*` is our marked ENQ). The exchange line appears when the next poll
 opens the next window, or after a second of silence. Poll-only windows (an unarmed
 panel's silent slot) are not printed. `log_level: 2` adds the per-frame/ctrl/gap
 detail and the tx pacing; `0` keeps only the 10 s summary and the health line.

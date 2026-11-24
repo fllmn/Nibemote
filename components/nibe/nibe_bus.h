@@ -277,7 +277,7 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   void drain_tx_notices_();
   void tail_(uint32_t ts, char *out, size_t cap);
   void on_poll(uint32_t ts, uint16_t addr) override;
-  void on_ctrl(uint32_t ts, uint8_t byte, uint16_t ctx) override;
+  void on_ctrl(uint32_t ts, uint8_t byte, uint16_t ctx, bool marked) override;
   void on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t *data, uint8_t len,
                 bool in_our_slot) override;
   void on_frame_bad(uint32_t ts, uint8_t cmd, uint16_t sender, uint8_t len) override;
@@ -406,6 +406,7 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
     uint8_t a;  // ctrl byte, or cmd for frames
     uint16_t x; // sender (frames) or polled address
     uint8_t len;
+    bool marked;  // control byte only: the ninth bit read 1
     uint8_t data[EX_LOG_DATA];
   };
   ExEntry ex_[EX_LOG_N];
@@ -415,7 +416,8 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   bool ex_open_{false};
   uint32_t ex_last_ms_{0};
   void ex_start_(uint32_t ts, uint16_t addr);
-  void ex_add_(uint32_t ts, uint8_t kind, uint8_t a, uint16_t x, const uint8_t *data, uint8_t len);
+  void ex_add_(uint32_t ts, uint8_t kind, uint8_t a, uint16_t x, const uint8_t *data, uint8_t len,
+               bool marked);
   void ex_flush_();
 
   // counters

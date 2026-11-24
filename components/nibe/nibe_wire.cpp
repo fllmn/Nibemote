@@ -14,6 +14,7 @@ void ExchangeParser::feed(const WireRecord &rec) {
     this->gap_(rec.ts);
     return;
   }
+  this->marked_ = (rec.flags & WRF_MARKED) != 0;
   this->byte_(rec.byte, rec.ts);
 }
 
@@ -75,7 +76,7 @@ void ExchangeParser::byte_(uint8_t b, uint32_t ts) {
       break;
     case P_HUNT:
       if (b == CTRL_ETX) {
-        this->sink_->on_ctrl(ts, b, 0);
+        this->sink_->on_ctrl(ts, b, 0, this->marked_);
         this->st_ = P_BOUNDARY;
       }
       break;
@@ -88,7 +89,7 @@ void ExchangeParser::boundary_(uint8_t b, uint32_t ts) {
     this->poll_hi_ = b;
     this->st_ = P_POLL_HI;
   } else if (is_ctrl_byte(b)) {
-    this->sink_->on_ctrl(ts, b, 0);
+    this->sink_->on_ctrl(ts, b, 0, this->marked_);
   } else {
     this->begin_frame_(b);
   }
@@ -106,7 +107,7 @@ void ExchangeParser::poll_lo_(uint8_t b, uint32_t ts) {
 /// Response/continuation slot of the just-polled exchange.
 void ExchangeParser::ctrl_(uint8_t b, uint32_t ts) {
   if (is_ctrl_byte(b)) {
-    this->sink_->on_ctrl(ts, b, this->polled_addr_);
+    this->sink_->on_ctrl(ts, b, this->polled_addr_, this->marked_);
     this->st_ = P_BOUNDARY;
   } else if (is_poll_hi(b)) {
     // node silent; master moved straight to the next poll
@@ -155,10 +156,10 @@ void ExchangeParser::chk_(uint8_t b, uint32_t ts) {
 void ExchangeParser::post_frame_(uint8_t b, uint32_t ts) {
   if (b == CTRL_ETX || b == CTRL_ENQ) {
     // ETX closes the exchange; an ENQ from the polled node answers a master push and re-arms the parse
-    this->sink_->on_ctrl(ts, b, 0);
+    this->sink_->on_ctrl(ts, b, 0, this->marked_);
     this->st_ = P_BOUNDARY;
   } else if (b == CTRL_ACK || b == CTRL_NAK) {
-    this->sink_->on_ctrl(ts, b, 0);
+    this->sink_->on_ctrl(ts, b, 0, this->marked_);
   } else if (is_poll_hi(b)) {
     // missing ETX; salvage by treating the pair as the next poll and move on
     this->sink_->on_anomaly(ts, AN_STRAY_CTRL);

@@ -28,7 +28,8 @@ class ExchangeSink {
  public:
   virtual ~ExchangeSink() = default;
   virtual void on_poll(uint32_t ts, uint16_t addr) = 0;
-  virtual void on_ctrl(uint32_t ts, uint8_t byte, uint16_t ctx) = 0;
+  /// marked: the byte's ninth bit read 1 (polls, ENQ and the master's close are marked)
+  virtual void on_ctrl(uint32_t ts, uint8_t byte, uint16_t ctx, bool marked) = 0;
   /// Only called for frames whose checksum verified (after the len-lie rescue).
   virtual void on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t *data, uint8_t len,
                         bool in_our_slot) = 0;
@@ -95,6 +96,7 @@ class ExchangeParser {
   uint32_t f_max_gap_us_{0};
   uint32_t f_gap_report_us_{0};
   uint32_t last_byte_ts_{0};
+  bool marked_{false};  // ninth bit of the byte currently being parsed
   uint8_t f_data_[FRAME_MAX_DATA];
   uint32_t frames_ok_{0};
   uint32_t frames_bad_{0};
