@@ -63,6 +63,21 @@ the thing you're testing. Both refuse unless the emulator is armed, and both sen
 what you give them — including register writes (`76 ...`) — so treat them as a
 shell on the heating bus.
 
+## Logs
+
+`log_level: 1` (default) prints one line per transfer window, in wire order:
+
+```
+[I][nibe]: ex 41C9 @16164027 | rx 06 ACK | rx 000A 71[00] | rx 05 ENQ | rx 06 ACK | rx 41C9 71[02 00 00 DA 9D ...] | rx 06 ACK | rx 03 ETX
+[I][nibe]: ex 00F9 @260521911 | tx 05 ENQ | rx 06 ACK | tx 40[40 88 00 00] | rx 06 ACK | tx 03 ETX
+```
+
+`tx` is us, `rx` is the master or another node (frames show their sender); rows 2–4
+render as text, other frames as hex. The exchange line appears when the next poll
+opens the next window, or after a second of silence. Poll-only windows (an unarmed
+panel's silent slot) are not printed. `log_level: 2` adds the per-frame/ctrl/gap
+detail and the tx pacing; `0` keeps only the 10 s summary and the health line.
+
 ## Wiring
 
 RS485 A/B/GND from the display port's RJ45 to the screw terminal

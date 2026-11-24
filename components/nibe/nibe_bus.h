@@ -169,7 +169,7 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
 #endif
   /// Knob placement (0-255, 127 = vertical): sends [KEY_KNOB, pos, 00, 00] on cmd-40 data[1] (commands.md).
   void set_knob_placement(uint8_t position);
-  /// 0 = summary only, 1 = + one line per frame/exchange (default), 2 = + raw bytes
+  /// 0 = summary only, 1 = one line per exchange + semantic events (default), 2 = + per-event wire detail
   void set_log_level(int level) { this->log_level_ = level; }
 
   /// Python glue: attach this engine to an rs485_bus (must run before bus setup).
@@ -395,6 +395,28 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   RegisterQuery register_query_;
   MenuStateQuery menu_state_query_;
   QueryScheduler scheduler_;
+
+  // ---- exchange log (task side): one line per transfer window ----
+  static constexpr size_t EX_LOG_N = 16;
+  static constexpr size_t EX_LOG_DATA = 24;
+  enum ExKind : uint8_t { EX_CTRL_RX, EX_FRAME_RX, EX_CTRL_TX, EX_FRAME_TX };
+  struct ExEntry {
+    uint32_t ts;
+    uint8_t kind;
+    uint8_t a;  // ctrl byte, or cmd for frames
+    uint16_t x; // sender (frames) or polled address
+    uint8_t len;
+    uint8_t data[EX_LOG_DATA];
+  };
+  ExEntry ex_[EX_LOG_N];
+  uint8_t ex_count_{0};
+  uint16_t ex_addr_{0};
+  uint32_t ex_start_us_{0};
+  bool ex_open_{false};
+  uint32_t ex_last_ms_{0};
+  void ex_start_(uint32_t ts, uint16_t addr);
+  void ex_add_(uint32_t ts, uint8_t kind, uint8_t a, uint16_t x, const uint8_t *data, uint8_t len);
+  void ex_flush_();
 
   // counters
   volatile uint32_t last_own_poll_ms_{0};

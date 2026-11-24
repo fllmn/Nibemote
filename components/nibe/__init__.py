@@ -52,7 +52,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_D4_TIME_ID): cv.use_id("time.RealTimeClock"),
             # request/key data[1]: the relaid system value (commands.md) — set to the observed byte for probes
             cv.Optional(CONF_REQUEST_BYTE, default=0x88): cv.int_range(min=0, max=0xFF),
-            # 0 = 10s summary, 1 = + one line per frame/exchange, 2 = + ctrl bytes/gaps
+            # 0 = 10s summary, 1 = + one line per exchange, 2 = + per-event wire detail
             cv.Optional(CONF_NIBE_LOG_LEVEL, default=1): cv.int_range(min=0, max=2),
         }
     ).extend(cv.COMPONENT_SCHEMA),

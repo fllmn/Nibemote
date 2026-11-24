@@ -492,9 +492,94 @@ void NibeBus::tail_(uint32_t ts, char *out, size_t cap) {
     out[0] = 0;  // synthetic loop-time events (no wire moment)
     return;
   }
+  if (ts < this->last_ev_ts_) {
+    snprintf(out, cap, " @%lu", (unsigned long) ts);  // out-of-order (tx notice): no bogus wrap delta
+    return;
+  }
   uint32_t d = ts - this->last_ev_ts_;  // unsigned wrap-safety across rolls
   snprintf(out, cap, " @%lu (+%lu)", (unsigned long) ts, (unsigned long) d);
   this->last_ev_ts_ = ts;
+}
+
+static const char *ctrl_name_(uint8_t b) {
+  switch (b) {
+    case CTRL_ACK: return "ACK";
+    case CTRL_ENQ: return "ENQ";
+    case CTRL_ETX: return "ETX";
+    case CTRL_NAK: return "NAK";
+    default: return "?";
+  }
+}
+
+/// Frame data for the exchange line: rows 2-4 as text, everything else as hex.
+static void render_data_(char *out, size_t cap, uint8_t cmd, const uint8_t *d, uint8_t n) {
+  if (cap == 0)
+    return;
+  size_t p = 0;
+  if (cmd >= CMD_ROW_BASE + 1 && cmd <= CMD_ROW_BASE + 3) {
+    for (uint8_t i = 0; i < n && d[i] != 0 && p + 1 < cap; i++)
+      out[p++] = (d[i] >= 0x20 && d[i] < 0x7F) ? (char) d[i] : '.';
+  } else {
+    for (uint8_t i = 0; i < n && p + 3 < cap; i++)
+      p += (size_t) snprintf(out + p, cap - p, "%s%02X", i ? " " : "", d[i]);
+  }
+  out[p] = 0;
+}
+
+void NibeBus::ex_start_(uint32_t ts, uint16_t addr) {
+  this->ex_flush_();  // the previous window ended when this poll arrived
+  this->ex_open_ = true;
+  this->ex_addr_ = addr;
+  this->ex_start_us_ = ts;
+  this->ex_count_ = 0;
+  this->ex_last_ms_ = esphome::millis();
+}
+
+void NibeBus::ex_add_(uint32_t ts, uint8_t kind, uint8_t a, uint16_t x, const uint8_t *data, uint8_t len) {
+  if (!this->ex_open_ || this->ex_count_ >= EX_LOG_N)
+    return;
+  ExEntry &e = this->ex_[this->ex_count_++];
+  e.ts = ts;
+  e.kind = kind;
+  e.a = a;
+  e.x = x;
+  e.len = len > EX_LOG_DATA ? (uint8_t) EX_LOG_DATA : len;
+  if (data != nullptr && e.len > 0)
+    memcpy(e.data, data, e.len);
+  this->ex_last_ms_ = esphome::millis();
+}
+
+/// One transfer window, one line: `ex 00F9 @ts | tx 05 ENQ | rx 06 ACK | tx 40[...] | tx 03 ETX`.
+/// Our transmissions are noticed after the fact, so entries are sorted by their wire timestamp.
+void NibeBus::ex_flush_() {
+  if (!this->ex_open_)
+    return;
+  this->ex_open_ = false;
+  if (this->log_level_ < 1 || this->ex_count_ == 0)
+    return;
+  for (uint8_t i = 1; i < this->ex_count_; i++) {
+    ExEntry e = this->ex_[i];
+    int j = (int) i - 1;
+    while (j >= 0 && this->ex_[j].ts > e.ts) {
+      this->ex_[j + 1] = this->ex_[j];
+      j--;
+    }
+    this->ex_[j + 1] = e;
+  }
+  char line[240];
+  int p = snprintf(line, sizeof(line), "ex %04X @%lu", this->ex_addr_, (unsigned long) this->ex_start_us_);
+  for (uint8_t i = 0; i < this->ex_count_ && p > 0 && (size_t) p < sizeof(line); i++) {
+    const ExEntry &e = this->ex_[i];
+    const char *dir = (e.kind == EX_CTRL_TX || e.kind == EX_FRAME_TX) ? "tx" : "rx";
+    if (e.kind == EX_CTRL_TX || e.kind == EX_CTRL_RX) {
+      p += snprintf(line + p, sizeof(line) - (size_t) p, " | %s %02X %s", dir, e.a, ctrl_name_(e.a));
+    } else {
+      char data[3 * EX_LOG_DATA + 1];
+      render_data_(data, sizeof(data), e.a, e.data, e.len);
+      p += snprintf(line + p, sizeof(line) - (size_t) p, " | %s %04X %02X[%s]", dir, e.x, e.a, data);
+    }
+  }
+  ESP_LOGI(TAG, "%s", line);
 }
 
 void NibeBus::parse_wire_() {
@@ -520,31 +605,36 @@ void NibeBus::drain_tx_notices_() {
     this->tail_(n.ts, tail, sizeof(tail));
     switch (n.kind) {
       case TXN_REPLY:
-        ESP_LOGI(TAG, "tx: %02X len=%u%s", n.byte, n.len, tail);
+        this->ex_add_(n.ts, EX_CTRL_TX, n.byte, 0, nullptr, 0);
+        if (this->log_level_ >= 2)
+          ESP_LOGI(TAG, "tx: %02X len=%u%s", n.byte, n.len, tail);
         break;
       case TXN_FRAME: {
-        ESP_LOGI(TAG, "tx: %02X len=%u%s", n.byte, n.len, tail);
-        // same format as received frames — our own sent frame, byte-for-byte
+        // same bytes we put on the wire; the exchange line renders them, level 2 adds the detail
         uint8_t fbuf[TX_FRAME_MAX];
         uint8_t len = this->tx_log_len_ < TX_FRAME_MAX ? this->tx_log_len_ : TX_FRAME_MAX;
         for (uint8_t i = 0; i < len; i++)  // stack copy off the volatile mirror
           fbuf[i] = this->tx_log_buf_[i];
-        if (len >= 5 && fbuf[0] == n.byte) {
-          char hexbuf[3 * 32 + 1];
-          hexbuf[0] = 0;
-          if (fbuf[3] > 0 && fbuf[3] <= 32)
-            hex_(hexbuf, sizeof(hexbuf), &fbuf[4], fbuf[3]);
-          ESP_LOGI(TAG, "  tx frame cmd=%02X sender=%02X%02X len=%u data=%s chk=%02X", fbuf[0], fbuf[1],
-                   fbuf[2], (unsigned) fbuf[3], hexbuf, fbuf[4 + fbuf[3]]);
+        this->ex_add_(n.ts, EX_FRAME_TX, n.byte, 0, fbuf, len);
+        if (this->log_level_ >= 2) {
+          ESP_LOGI(TAG, "tx: %02X len=%u%s", n.byte, n.len, tail);
+          if (len >= 5 && fbuf[0] == n.byte) {
+            char hexbuf[3 * 32 + 1];
+            hexbuf[0] = 0;
+            if (fbuf[3] > 0 && fbuf[3] <= 32)
+              hex_(hexbuf, sizeof(hexbuf), &fbuf[4], fbuf[3]);
+            ESP_LOGI(TAG, "  tx frame cmd=%02X sender=%02X%02X len=%u data=%s chk=%02X", fbuf[0], fbuf[1],
+                     fbuf[2], (unsigned) fbuf[3], hexbuf, fbuf[4 + fbuf[3]]);
+          }
         }
         if (n.byte == CMD_ANNOUNCE)
           this->refill_queries_();
         break;
       }
       case TXN_FEED_DONE:
-        // paced feed done: report the achieved inter-byte cadence
-        ESP_LOGI(TAG, "tx feed done: gaps %lu-%lu us%s", (unsigned long) this->paced_gap_min_,
-                 (unsigned long) this->paced_gap_max_, tail);
+        if (this->log_level_ >= 2)
+          ESP_LOGI(TAG, "tx feed done: gaps %lu-%lu us%s", (unsigned long) this->paced_gap_min_,
+                   (unsigned long) this->paced_gap_max_, tail);
         break;
       case TXN_TX_REFUSED:
         ESP_LOGW(TAG, "anomaly: tx refused (dropped, NOT retried)%s", tail);
@@ -556,6 +646,7 @@ void NibeBus::drain_tx_notices_() {
 }
 
 void NibeBus::on_poll(uint32_t ts, uint16_t addr) {
+  this->ex_start_(ts, addr);  // a poll opens a transfer window
   // a poll to another node closes any pending register pairing (the answer stays in its node's turn)
   this->reg_pairing_.poll(addr);
   char tail[28];
@@ -568,7 +659,8 @@ void NibeBus::on_poll(uint32_t ts, uint16_t addr) {
   }
   this->polls_own_++;
   this->last_own_poll_ms_ = esphome::millis();  // loop-clock bookkeeping
-  ESP_LOGD(TAG, "poll %04X (own)%s", addr, tail);
+  if (this->log_level_ >= 2)
+    ESP_LOGD(TAG, "poll %04X (own)%s", addr, tail);
   if (!this->emulating())
     return;
   const uint8_t reply = this->scheduler_.poll_reply(*this);
@@ -578,6 +670,7 @@ void NibeBus::on_poll(uint32_t ts, uint16_t addr) {
 }
 
 void NibeBus::on_ctrl(uint32_t ts, uint8_t byte, uint16_t ctx) {
+  this->ex_add_(ts, EX_CTRL_RX, byte, ctx, nullptr, 0);
   char tail[28];
   this->tail_(ts, tail, sizeof(tail));
   if (this->log_level_ >= 2)
@@ -627,13 +720,13 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
   this->tail_(ts, tail, sizeof(tail));
   const uint8_t n = len > FRAME_MAX_DATA ? (uint8_t) FRAME_MAX_DATA : len;
   const FrameView view{cmd, sender, payload, n};
+  this->ex_add_(ts, EX_FRAME_RX, cmd, sender, payload, n);
   char hexbuf[3 * FRAME_MAX_DATA + 1];
   hexbuf[0] = 0;
   hex_(hexbuf, sizeof(hexbuf), payload, n);
-  if (this->log_level_ >= 1) {
+  if (this->log_level_ >= 2) {
     ESP_LOGD(TAG, "frame cmd=%02X sender=%04X len=%u data=%s%s", cmd, sender, (unsigned) len, hexbuf, tail);
-    if (this->log_level_ >= 2)
-      ESP_LOGD(TAG, "  intra-byte gap max: %lu us", (unsigned long) this->parser_.last_frame_gap_us());
+    ESP_LOGD(TAG, "  intra-byte gap max: %lu us", (unsigned long) this->parser_.last_frame_gap_us());
   }
 
   // display rows ONLY in our own slot — a probe must not count the panel's rows (dead-arms the pump)
@@ -658,7 +751,7 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
         this->content_query_.disarm();  // queued requests pop at the next poll
         ESP_LOGI(TAG, "first content row (row %u) received: request pump off", row);
       }
-      if (this->screen_.complete()) {
+      if (this->screen_.complete() && this->log_level_ >= 2) {
         ESP_LOGI(TAG, "rows 2-4 received: display content complete");
       }
 #ifdef USE_TEXT_SENSOR
@@ -813,16 +906,19 @@ void NibeBus::emulator_push_ack_tick_() {
   uint8_t ack = CTRL_ACK;  // stack copy (kept off flash on every path, as usual)
   if (this->bus_->send_burst(&ack, 1, false)) {
     this->tx_sent_++;
-    ESP_LOGI(TAG, "tx: %02X len=0", CTRL_ACK);
+    this->ex_add_(now, EX_CTRL_TX, CTRL_ACK, 0, nullptr, 0);
   } else {
     this->tx_refused_++;
   }
 }
 
 void NibeBus::loop() {
-  // wire facts -> parser -> handlers, all task-side (ADR-0001)
-  this->parse_wire_();
+  // wire facts -> parser -> handlers, all task-side (ADR-0001).
+  // Our tx notices first, so an exchange line flushed while parsing already includes them.
   this->drain_tx_notices_();
+  this->parse_wire_();
+  if (this->ex_open_ && esphome::millis() - this->ex_last_ms_ > 1000)
+    this->ex_flush_();  // long silence: don't hold the last window
 
   // top up the request queue from loop too: row pushes produce no tx notice to refill from
   this->refill_queries_();
