@@ -306,7 +306,6 @@ std::string NibeBus::build_display_page_() {
           "<div class=banknote>keys deliver on the next bus poll; the display "
           "updates as content changes</div>";
   page += "<div class=hex>symbol strip raw: <b id=hx>";
-
   // raw bytes
   if (this->screen_.symbols_len() == 0) {
     page += "-- no display data yet --";
@@ -314,6 +313,10 @@ std::string NibeBus::build_display_page_() {
     append_symbol_hex_(page, this->screen_);
   }
   page += "</b></div>";
+
+  // frame experiment: the page strips non-hex and sends pairs; the device appends the XOR-8.
+  page += "<div class=hex>frame (hex, XOR added) <input id=raw size=24 placeholder='72 00 F9 02 05 11'> "
+          "<button onclick=r()>send</button></div>";
 
   // bit table for matching yet-unknown symbols
   page += "<table>";
@@ -339,6 +342,9 @@ std::string NibeBus::build_display_page_() {
       "<script>"
       "var busy=false,fastUntil=0;"
       "function k(a){fetch('/?k='+a);fastUntil=Date.now()+2000;tick();}"
+      "function r(){var e=document.getElementById('raw');"
+      "var v=e.value.replace(/[^0-9a-fA-F]/g,'');"
+      "if(v.length&&v.length%2===0){fetch('/?k=frame&hex='+v);e.value='';}}"
       "function s(i,v){var e=document.getElementById(i);if(e&&e.textContent!=v)e.textContent=v;}"
       "function loop(){"
       "if(busy)return;"
@@ -396,6 +402,26 @@ void NibeBus::web_handle_action_(const std::string &action) {
   }
 }
 
+/// `?k=frame&hex=..` appends the XOR-8; `?k=raw&hex=..` sends the bytes verbatim (checksum experiments).
+void NibeBus::web_handle_raw_(const std::string &hex, bool add_checksum) {
+  uint8_t frame[TX_FRAME_MAX];
+  size_t n = parse_hex_bytes(hex.c_str(), frame, sizeof(frame));
+  if (n == 0) {
+    ESP_LOGW(TAG, "display-web: frame rejected (empty or not hex pairs)");
+    return;
+  }
+  if (add_checksum) {
+    size_t framed = 0;
+    if (n < 4 || !append_checksum(frame, n, sizeof(frame), &framed)) {
+      ESP_LOGW(TAG, "display-web: frame rejected (need cmd+sender+len before the checksum, or too long)");
+      return;
+    }
+    n = framed;
+  }
+  if (!this->queue_raw_(frame, n))
+    ESP_LOGW(TAG, "display-web: frame not queued (unarmed or length %u)", (unsigned) n);
+}
+
 void NibeBus::serve_display_web() {
   if (this->web_port_ == 0)
     return;
@@ -433,7 +459,18 @@ void NibeBus::serve_display_web() {
         size_t end = act.find_first_of(" &");
         if (end != std::string::npos)
           act.resize(end);
-        this->web_handle_action_(act);
+        if (act == "raw" || act == "frame") {
+          std::string hex;
+          size_t h = this->web_request_.find("hex=");
+          if (h != std::string::npos) {
+            h += 4;
+            size_t e = this->web_request_.find_first_of(" &", h);
+            hex = this->web_request_.substr(h, e == std::string::npos ? std::string::npos : e - h);
+          }
+          this->web_handle_raw_(hex, act == "frame");
+        } else {
+          this->web_handle_action_(act);
+        }
         this->web_response_ =
             "HTTP/1.1 204 No Content\r\nCache-Control: no-store\r\n"
             "Connection: close\r\n\r\n";

@@ -60,6 +60,10 @@ class RegisterPairing {
 
 /// D4 tail byte: the configured override, else the day of week (0 = auto).
 uint8_t d4_tail_byte(uint8_t configured, uint8_t day_of_week);
+/// Parse space-separated hex pairs ("72 05 11" or "720511") into bytes; 0 on odd/invalid/overflow.
+size_t parse_hex_bytes(const char *s, uint8_t *out, size_t cap);
+/// Append the XOR-8 checksum to a frame built without one; false when it would not fit.
+bool append_checksum(uint8_t *frame, size_t len, size_t cap, size_t *out_len);
 /// D4 answer payload: yy mm dd hh mm ss + tail (day-of-week, Sunday=1).
 void encode_d4_clock(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute,
                      uint8_t second, uint8_t tail, uint8_t out[7]);

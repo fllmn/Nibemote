@@ -105,6 +105,27 @@ int main() {
     CHECK(!is_register_answer(answer, ADDR_RELAY));
   }
 
+  // --- hex parsing for the web raw-frame field ---
+  {
+    uint8_t out[8] = {0};
+    CHECK(parse_hex_bytes("72 05 11", out, sizeof(out)) == 3);
+    CHECK(out[0] == 0x72 && out[1] == 0x05 && out[2] == 0x11);
+    CHECK(parse_hex_bytes("720511", out, sizeof(out)) == 3);
+    CHECK(parse_hex_bytes("72 05 11 AB", out, sizeof(out)) == 4 && out[3] == 0xAB);
+    CHECK(parse_hex_bytes("7", out, sizeof(out)) == 0);    // odd digit count
+    CHECK(parse_hex_bytes("7G", out, sizeof(out)) == 0);   // not hex
+    CHECK(parse_hex_bytes("", out, sizeof(out)) == 0);     // nothing
+    CHECK(parse_hex_bytes("00 11 22 33", out, 3) == 0);    // would overflow the buffer
+
+    uint8_t frame[8] = {0x72, 0x00, 0xF9, 0x02, 0x05, 0x11};
+    size_t n = 0;
+    CHECK(append_checksum(frame, 6, sizeof(frame), &n) && n == 7 && frame[6] == 0x9D);
+    uint8_t query[5] = {0x32, 0x00, 0xF9, 0x00};
+    CHECK(append_checksum(query, 4, sizeof(query), &n) && n == 5 && query[4] == 0xCB);
+    CHECK(!append_checksum(frame, 8, sizeof(frame), &n));  // no room for the checksum
+    CHECK(!append_checksum(frame, 0, sizeof(frame), &n));  // nothing to checksum
+  }
+
   // --- D4 clock answer: BCD yy mm dd hh mm ss + tail ---
   {
     uint8_t out[7] = {0};

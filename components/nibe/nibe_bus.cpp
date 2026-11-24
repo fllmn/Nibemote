@@ -401,17 +401,38 @@ bool NibeBus::send(uint8_t cmd, const uint8_t *data, size_t len, Repeat repeat) 
   size_t n = build_frame(buf, sizeof(buf), cmd, this->my_addr_, data, len);
   if (n == 0 || n > TX_FRAME_MAX - 1)
     return false;
+  return this->queue_built_(buf, n, repeat == Repeat::YES);
+}
+
+bool NibeBus::queue_raw_(const uint8_t *frame, size_t len) {
+  // armed-only escape hatch for experiments (web raw-frame field): bytes go out as given,
+  // checksum included — it is as powerful as a shell on the bus, which is why the arm gate applies.
+  if (!this->emulating()) {
+    ESP_LOGW(TAG, "role is %s: raw frame not queued (refuses to transmit)", this->role_name());
+    return false;
+  }
+  if (len < 5 || len > TX_FRAME_MAX - 1) {
+    ESP_LOGW(TAG, "raw frame length %u outside [5,%u]", (unsigned) len, (unsigned) (TX_FRAME_MAX - 1));
+    return false;
+  }
+  char hex[3 * TX_FRAME_MAX];
+  hex_(hex, sizeof(hex), frame, len);
+  ESP_LOGW(TAG, "queueing raw frame: %s (armed experiment)", hex);
+  return this->queue_built_(frame, len, false);
+}
+
+bool NibeBus::queue_built_(const uint8_t *buf, size_t n, bool repeatable) {
   uint32_t head = q_load_(&this->txq_head_);
   uint32_t tail = q_load_(&this->txq_tail_);
   uint32_t used = (head + 2 * TX_QUEUE_N - tail) % (2 * TX_QUEUE_N);
   if (used >= TX_QUEUE_N) {  // 8 slots over mod-16 indices: count, never head==tail-1
-    ESP_LOGW(TAG, "outbound queue full; frame %02X dropped", cmd);
+    ESP_LOGW(TAG, "outbound queue full; frame %02X dropped", buf[0]);
     return false;
   }
   uint32_t next = (head + 1) % (2 * TX_QUEUE_N);
   PendingTx &slot = this->tx_queue_[head % TX_QUEUE_N];
   slot.len = (uint8_t) n;
-  slot.repeatable = (repeat == Repeat::YES);
+  slot.repeatable = repeatable;
   memcpy(slot.buf, buf, n);
   q_store_(&this->txq_head_, next);
   return true;

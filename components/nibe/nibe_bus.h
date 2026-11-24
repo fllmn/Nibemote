@@ -243,6 +243,9 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
 
   // ---- queries (task side): the engine as a QueryContext ----------------------
   bool send(uint8_t cmd, const uint8_t *data, size_t len, Repeat repeat) override;
+  /// Queue a complete frame (cmd..checksum) verbatim — the web raw-frame experiment path, armed-only.
+  bool queue_raw_(const uint8_t *frame, size_t len);
+  bool queue_built_(const uint8_t *buf, size_t n, bool repeatable);
   bool content_complete() override { return this->screen_.any(); }
   bool queue_empty() override;
   bool queue_has_once() override;
@@ -421,6 +424,7 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
 #ifdef USE_NIBE_DISPLAY_WEB
   // ---- display-page declarations: the page builders run in loop() — same task context ----
   void web_handle_action_(const std::string &action);
+  void web_handle_raw_(const std::string &hex, bool add_checksum);
   std::string build_display_page_();
   std::string build_display_json_();
   uint16_t web_port_{0};

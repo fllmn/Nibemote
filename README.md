@@ -44,6 +44,25 @@ the OTA address. Adoption into the Esphome controller required for Home Assistan
 | `configs/nibemote-host.yaml` + `sim/vvm300_sim.py` | host build + simulated VVM300 for tests |
 | `docs/` | protocol, command map, architecture, bring-up |
 
+## Web page
+
+The emulator serves the virtual display on `display_web_port` (8080 in
+`configs/nibemote.yaml`): `/` is the page, `/j` the JSON state it polls. Actions are
+`GET /?k=<action>`: `plus`, `minus`, `enter`, `kl`/`kr` (one knob detent), and
+`frame`/`raw` for arbitrary frames:
+
+```bash
+# frame without checksum: cmd, sender hi/lo, len, data — the device appends XOR-8
+curl 'http://<device>:8080/?k=frame&hex=7200F9020511'   # register 0x11 read
+# the same frame sent verbatim, checksum included (for checksum experiments)
+curl 'http://<device>:8080/?k=raw&hex=7200F90205119D'
+```
+
+`frame` is the normal path; `raw` adds nothing and is there when the checksum is
+the thing you're testing. Both refuse unless the emulator is armed, and both send
+what you give them — including register writes (`76 ...`) — so treat them as a
+shell on the heating bus.
+
 ## Wiring
 
 RS485 A/B/GND from the display port's RJ45 to the screw terminal
