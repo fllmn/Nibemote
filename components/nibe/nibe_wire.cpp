@@ -160,6 +160,9 @@ void ExchangeParser::post_frame_(uint8_t b, uint32_t ts) {
     this->st_ = P_BOUNDARY;
   } else if (b == CTRL_ACK || b == CTRL_NAK) {
     this->sink_->on_ctrl(ts, b, 0, this->marked_);
+    // a grant or a receipt: if it granted us an answer, our own frame and close never come back
+    // through RX, so the boundary is the only safe place to wait for the next poll
+    this->st_ = P_BOUNDARY;
   } else if (is_poll_hi(b)) {
     // missing ETX; salvage by treating the pair as the next poll and move on
     this->sink_->on_anomaly(ts, AN_STRAY_CTRL);

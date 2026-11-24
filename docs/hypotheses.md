@@ -161,8 +161,11 @@ reads, so the panel cannot read the master's registers.
 
 Consequences: the values are obtainable by capturing the master's own reads (the
 passive pairing attributes each answer to the register the master asked the polled
-node for). To mimic the panel, nibemote must *answer* the master's reads of
-`0x40`-`0x42` — not implemented yet; its own probe requests are inert.
+node for). At startup the master sweeps the panel's block `0x40`-`0xBF` (128 reads,
+one per exchange); the real display answers every one and the values are constant
+across captures (see commands.md). nibemote now answers that sweep from the captured
+table, in-window: ENQ in the receipt slot, the frame on the grant. Its own probe
+requests remain inert.
 
 ## 9. Idle-slot keepalive 0xFF purpose
 

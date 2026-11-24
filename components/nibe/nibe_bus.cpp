@@ -72,7 +72,39 @@ bool IRAM_ATTR NibeBus::reply_to_poll_(uint32_t ts, uint8_t reply) {
   return true;
 }
 
+bool IRAM_ATTR NibeBus::start_paced_(const uint8_t *buf, uint8_t n, uint32_t ts) {
+  if (n <= 1 || n > TX_FRAME_MAX)
+    return false;
+  // native cadence: every node paces its bytes ~650 us (protocol.md) — contiguous bursts are never digested
+  for (uint8_t i = 0; i < n; i++) {
+    this->paced_buf_[i] = buf[i];
+    this->tx_log_buf_[i] = buf[i];  // task-side mirror for the same-format log
+  }
+  this->tx_log_len_ = n;
+  this->paced_n_ = n;
+  this->paced_k_ = 0;
+  this->paced_start_us_ = ts;
+  this->paced_prev_feed_us_ = 0;
+  this->paced_gap_min_ = ~0u;
+  this->paced_gap_max_ = 0;
+  this->tx_sent_++;
+  this->enq_pending_ = false;
+  this->we_own_close_ = true;  // granted-frame sender closes after the master's receipt
+  this->push_tx_notice_(ts, TXN_FRAME, buf[0], n);
+  this->feed_paced_(ts);  // byte 0 is due right now
+  return true;
+}
+
 bool IRAM_ATTR NibeBus::deliver_frame_(uint32_t ts) {
+  if (__atomic_load_n(&this->answer_pending_, __ATOMIC_ACQUIRE)) {
+    // the delayed reply was ENQ because a master register read is owed an answer: deliver it now
+    uint8_t out[TX_FRAME_MAX];
+    uint8_t n = this->answer_len_;
+    for (uint8_t i = 0; i < n && i < TX_FRAME_MAX; i++)
+      out[i] = this->answer_buf_[i];
+    __atomic_store_n(&this->answer_pending_, false, __ATOMIC_RELEASE);
+    return this->start_paced_(out, n, ts);
+  }
   uint32_t h = q_load_(&this->txq_head_);
   uint32_t t = q_load_(&this->txq_tail_);
   if ((h - t + 2 * TX_QUEUE_N) % (2 * TX_QUEUE_N) == 0)
@@ -85,24 +117,7 @@ bool IRAM_ATTR NibeBus::deliver_frame_(uint32_t ts) {
   // sender-closes: master receipt 06 -> our closing 03 (FRAME_CLOSE_DELAY_US); no receipt = dying frame, never retried
   uint32_t next_tail = (t + 1) % (2 * TX_QUEUE_N);
   q_store_(&this->txq_tail_, next_tail);  // pop first: a refused send drops, never retries
-  // native cadence: every node paces its bytes ~650 us (protocol.md) — contiguous bursts are never digested
-  for (uint8_t i = 0; i < tx.len; i++) {
-    this->paced_buf_[i] = out[i];
-    this->tx_log_buf_[i] = out[i];  // task-side mirror for the same-format log
-  }
-  this->tx_log_len_ = tx.len;
-  this->paced_n_ = tx.len;
-  this->paced_k_ = 0;
-  this->paced_start_us_ = ts;
-  this->paced_prev_feed_us_ = 0;
-  this->paced_gap_min_ = ~0u;
-  this->paced_gap_max_ = 0;
-  this->tx_sent_++;
-  this->enq_pending_ = false;
-  this->we_own_close_ = true;  // granted-frame sender closes after the master's receipt
-  this->push_tx_notice_(ts, TXN_FRAME, out[0], (uint8_t) tx.len);
-  this->feed_paced_(ts);  // byte 0 is due right now
-  return true;
+  return this->start_paced_(out, tx.len, ts);
 }
 
 /// Feed one byte per native cadence step; BUSY retries the SAME byte; a poll pair voids the feed (checked per byte)
@@ -242,7 +257,15 @@ void IRAM_ATTR NibeBus::track_byte_(uint8_t b, uint32_t ts, bool marked) {
       if (b == CTRL_ETX || b == CTRL_ENQ) {
         this->ws_ = WS_BOUNDARY;
       } else if (b == CTRL_ACK || b == CTRL_NAK) {
-        // await the sender's ETX
+        if (this->enq_pending_ && this->emulating()) {
+          // grant for the answer we ENQed after the master's push: deliver it, then we owe the close
+          this->arm_reply_(RP_FRAME, 0, ts, GRANT_FRAME_DELAY_US);
+          this->enq_pending_ = false;
+        } else if (this->we_own_close_ && this->emulating()) {
+          // receipt for our answer frame: sender-closes
+          this->arm_reply_(RP_CTRL, CTRL_ETX, ts, FRAME_CLOSE_DELAY_US);
+          this->we_own_close_ = false;
+        }
       } else if (is_poll_hi(b)) {
         // missing ETX; salvage by treating the pair as the next poll and move on
         this->ws_poll_hi_ = b;
@@ -882,6 +905,30 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
     }
   }
 
+  // The master reads our register block (it sweeps 0x40..0xBF at startup). Answer in-window the way
+  // the real panel does: the delayed reply becomes ENQ and the grant delivers this frame.
+  bool answered = false;
+  if (in_our_slot && this->emulating() && sender == ADDR_VVM300 && cmd == CMD_REG_READ) {
+    uint8_t reg = 0;
+    uint8_t value = 0;
+    if (parse_register_request(view, &reg) && panel_register_value(reg, &value)) {
+      uint8_t data[3] = {REG_PREFIX, reg, value};
+      uint8_t frame[TX_FRAME_MAX];
+      size_t n = build_frame(frame, sizeof(frame), CMD_REG_READ, this->my_addr_, data, sizeof(data));
+      if (n > 1 && n <= sizeof(this->answer_buf_)) {
+        for (size_t i = 0; i < n; i++)
+          this->answer_buf_[i] = frame[i];
+        this->answer_len_ = (uint8_t) n;
+        __atomic_store_n(&this->answer_pending_, true, __ATOMIC_RELEASE);
+        answered = true;
+        if (this->log_level_ >= 2)
+          ESP_LOGD(TAG, "master read reg 0x%02X: answering 0x%02X", reg, value);
+      }
+    }
+  }
+  if (in_our_slot && !answered)
+    __atomic_store_n(&this->answer_pending_, false, __ATOMIC_RELAXED);  // no answer owed for this push
+
   // a valid frame in our slot is receipt-ACKed late, when quiet (>= PUSH_ACK_DELAY_US; protocol.md)
   if (in_our_slot && this->emulating()) {
     uint8_t wr = this->push_ack_wr_;
@@ -909,13 +956,9 @@ void NibeBus::emulator_push_ack_tick_() {
   if ((now - arm_ts) < PUSH_ACK_DELAY_US)  // render lag not elapsed yet
     return;
   this->push_ack_rd_ = (uint8_t) (rd + 1);  // pop: refused sends still drop, never retried
-  uint8_t ack = CTRL_ACK;  // stack copy (kept off flash on every path, as usual)
-  if (this->bus_->send_burst(&ack, 1, false)) {
-    this->tx_sent_++;
-    this->ex_add_(now, EX_CTRL_TX, CTRL_ACK, 0, nullptr, 0, false);
-  } else {
-    this->tx_refused_++;
-  }
+  // a master register read is owed an answer: use the receipt slot to ENQ, the grant delivers the frame
+  const bool answer = __atomic_load_n(&this->answer_pending_, __ATOMIC_ACQUIRE);
+  this->reply_to_poll_(now, answer ? CTRL_ENQ : CTRL_ACK);
 }
 
 void NibeBus::loop() {

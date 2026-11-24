@@ -102,3 +102,17 @@ each answer raw, attributed to the register the master asked for that node
 A panel-initiated read is inert: `05 11` and `05 40` were sent from the panel and the
 master receipt-ACKed both without answering. The register-address number and
 "Send 0x72 read" button are experiment tools, not a read channel.
+
+## The panel's own block (0x40–0xBF)
+
+The master sweeps 128 registers from the panel at startup, one read per exchange. The
+real display answers every one as `72 05 <reg> <val>`, and the values are constant
+across every capture. nibemote answers the same way: the receipt slot carries ENQ, the
+grant the frame (in-window, then the panel closes).
+
+Non-zero cells (everything else is `00`):
+
+```
+40=06 44=68 45=77 46=D7 48=01 4C=06 50=68 51=77 52=D7 54=01
+58=13 5C=66 5D=77 5E=D7 B8=01 BC=D1 BD=D0 BE=E0 BF=4B
+```

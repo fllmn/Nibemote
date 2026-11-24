@@ -124,6 +124,14 @@ int main() {
     CHECK(append_checksum(query, 4, sizeof(query), &n) && n == 5 && query[4] == 0xCB);
     CHECK(!append_checksum(frame, 8, sizeof(frame), &n));  // no room for the checksum
     CHECK(!append_checksum(frame, 0, sizeof(frame), &n));  // nothing to checksum
+
+    uint8_t reg = 0;
+    CHECK(panel_register_value(0x40, &reg) && reg == 0x06);
+    CHECK(panel_register_value(0x44, &reg) && reg == 0x68);
+    CHECK(panel_register_value(0xBF, &reg) && reg == 0x4B);
+    CHECK(panel_register_value(0x41, &reg) && reg == 0x00);
+    CHECK(!panel_register_value(0x3F, &reg));
+    CHECK(!panel_register_value(0xC0, &reg));
   }
 
   // --- D4 clock answer: BCD yy mm dd hh mm ss + tail ---

@@ -60,6 +60,8 @@ class RegisterPairing {
 
 /// D4 tail byte: the configured override, else the day of week (0 = auto).
 uint8_t d4_tail_byte(uint8_t configured, uint8_t day_of_week);
+/// The panel's register block (0x40..0xBF) as captured from the real display; false outside it.
+bool panel_register_value(uint8_t reg, uint8_t *value);
 /// Parse space-separated hex pairs ("72 05 11" or "720511") into bytes; 0 on odd/invalid/overflow.
 size_t parse_hex_bytes(const char *s, uint8_t *out, size_t cap);
 /// Append the XOR-8 checksum to a frame built without one; false when it would not fit.

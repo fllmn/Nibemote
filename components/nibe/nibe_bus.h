@@ -265,6 +265,12 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   void gap_(uint32_t ts);
   void tx_done_(uint32_t ts) {}
 
+  // answer to a master register read: the delayed reply becomes ENQ and this frame rides the grant
+  volatile uint8_t answer_buf_[TX_FRAME_MAX];
+  volatile uint8_t answer_len_{0};
+  volatile bool answer_pending_{false};
+
+  bool IRAM_ATTR start_paced_(const uint8_t *buf, uint8_t n, uint32_t ts);
   bool IRAM_ATTR reply_to_poll_(uint32_t ts, uint8_t reply);  // one control byte as our poll reply
   bool IRAM_ATTR deliver_frame_(uint32_t ts);                  // frame + ETX from the queue head
   /// Wire mechanics only (ISR): poll pair, grant, close, frame boundaries — never checksums or meaning.

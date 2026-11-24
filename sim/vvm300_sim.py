@@ -155,6 +155,28 @@ def expect_enq_frame(m: Master, label: str, expected: bytes) -> int:
     return resp
 
 
+def read_panel_register(m: Master, label: str, reg: int, value: int) -> None:
+    """Master reads a panel register (its boot sweep does 0x40..0xBF one by one).
+    The panel answers in-window: the delayed receipt slot carries ENQ, the grant the frame."""
+    resp = m.poll(ADDR_DISPLAY)
+    m.check(f"{label}: display answers bare ACK", resp == ACK, hex(resp))
+    if resp != ACK:
+        return
+    m.send(frame(0x72, ADDR_VVM_CPU, bytes([0x05, reg])))
+    enq = m.recv(1)[0]
+    m.check(f"{label}: display ENQs its answer", enq == ENQ, hex(enq))
+    if enq != ENQ:
+        return
+    m.send(bytes([ACK]))  # grant
+    ok, raw = m.read_frame()
+    want = frame(0x72, ADDR_DISPLAY, bytes([0x05, reg, value]))
+    m.check(f"{label}: frame checksum ok", ok, raw.hex(" "))
+    m.check(f"{label}: frame bytes", raw == want, f"got {raw.hex(' ')}, want {want.hex(' ')}")
+    m.send(bytes([ACK]))  # receipt
+    etx = m.recv(1)[0]
+    m.check(f"{label}: display closes with ETX (sender-closes)", etx == ETX, hex(etx))
+
+
 def push_after_enq(m: Master, label: str, cmd: int, data: bytes, max_bare: int = 6) -> None:
     """The display ENQs (still requesting); the ready master takes the slot and
     pushes a frame anyway — the display receipt-ACKs it and the exchange closes
@@ -439,6 +461,11 @@ def main() -> int:
     m.send(bytes([ETX]))  # master closes regardless; the panel receipt-ACKed nothing
     Master.check("corrupt frame gets no receipt ACK", expect_silence(m, 0.8))
     expect_ack(m, "poll after corruption")
+
+    # the master's boot sweep reads the panel's register block; two samples prove the
+    # in-window answer path (ENQ in the receipt slot, frame on the grant, sender-closes)
+    read_panel_register(m, "register read 0x40", 0x40, 0x06)
+    read_panel_register(m, "register read 0xBF", 0xBF, 0x4B)
 
     # the firmware's on_boot sets knob placement 200 (~40 s after boot):
     # the knob reaches the master as a cmd-0x40 event frame,
