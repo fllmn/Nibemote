@@ -21,18 +21,37 @@ static inline void hex_(char *out, size_t cap, const uint8_t *data, size_t len) 
   }
 }
 
-// ------ engine side (runs in the bus ISR on hardware): byte FSM, replies, delivery ------
+// ------ engine side: ISR ingest + wire mechanics, task parse (ADR-0001) ------
 
-void IRAM_ATTR NibeBus::push_event_(const EventT &ev) {
-  uint32_t h = q_load_(&this->ev_head_);
-  uint32_t t = q_load_(&this->ev_tail_);
-  uint32_t next = (h + 1) % EV_RING_N;
-  if (next == t) {  // consumer too slow: drop newest, report in the summary
-    this->ev_overflow_++;
+void IRAM_ATTR NibeBus::push_wire_(uint8_t b, uint32_t ts, uint8_t flags) {
+  uint32_t h = q_load_(&this->wire_head_);
+  uint32_t next = (h + 1) % WIRE_RING_N;
+  if (next == q_load_(&this->wire_tail_)) {  // parser too slow: drop newest, reported in the summary
+    this->wire_overflow_++;
     return;
   }
-  this->events_[h] = ev;
-  q_store_(&this->ev_head_, next);
+  this->wire_[h] = WireRecord{ts, b, flags};
+  q_store_(&this->wire_head_, next);
+}
+
+void IRAM_ATTR NibeBus::push_wire_gap_(uint32_t ts) {
+  uint32_t h = q_load_(&this->wire_head_);
+  uint32_t next = (h + 1) % WIRE_RING_N;
+  if (next == q_load_(&this->wire_tail_)) {
+    this->wire_overflow_++;
+    return;
+  }
+  this->wire_[h] = WireRecord{ts, 0, WRF_GAP};
+  q_store_(&this->wire_head_, next);
+}
+
+void IRAM_ATTR NibeBus::push_tx_notice_(uint32_t ts, uint8_t kind, uint8_t byte, uint8_t len) {
+  uint32_t h = q_load_(&this->tx_notice_head_);
+  uint32_t next = (h + 1) % TX_NOTICE_N;
+  if (next == q_load_(&this->tx_notice_tail_))
+    return;  // log only: the loop pumps the request queue every pass regardless
+  this->tx_notices_[h] = TxNotice{ts, kind, byte, len};
+  q_store_(&this->tx_notice_head_, next);
 }
 
 bool IRAM_ATTR NibeBus::reply_to_poll_(uint32_t ts, uint8_t reply) {
@@ -40,12 +59,12 @@ bool IRAM_ATTR NibeBus::reply_to_poll_(uint32_t ts, uint8_t reply) {
     return false;
   if (!this->bus_->send_burst(&reply, 1, reply == CTRL_ENQ)) {
     this->tx_refused_++;
-    this->push_event_(EventT{ts, EV_ANOMALY, AN_TX_REFUSED, 0, 0, 0});
+    this->push_tx_notice_(ts, TXN_TX_REFUSED, 0, 0);
     return false;
   }
   this->tx_sent_++;
   this->enq_pending_ = (reply == CTRL_ENQ);
-  this->push_event_(EventT{ts, EV_TX, reply, 0, 0, 0});
+  this->push_tx_notice_(ts, TXN_REPLY, reply, 0);
   return true;
 }
 
@@ -77,7 +96,7 @@ bool IRAM_ATTR NibeBus::deliver_frame_(uint32_t ts) {
   this->tx_sent_++;
   this->enq_pending_ = false;
   this->we_own_close_ = true;  // granted-frame sender closes after the master's receipt
-  this->push_event_(EventT{ts, EV_TX, out[0], 0, (uint8_t) tx.len, 0});
+  this->push_tx_notice_(ts, TXN_FRAME, out[0], (uint8_t) tx.len);
   this->feed_paced_(ts);  // byte 0 is due right now
   return true;
 }
@@ -114,276 +133,125 @@ void IRAM_ATTR NibeBus::feed_paced_(uint32_t now) {
     this->paced_prev_feed_us_ = now;
     k++;
     if (k == n)
-      this->push_event_(EventT{now, EV_TX, 0xFE, 0, 0, 0});  // feed-done marker (gap report)
+      this->push_tx_notice_(now, TXN_FEED_DONE, 0xFE, 0);  // feed-done marker (gap report)
   }
   this->paced_k_ = k;
 }
 
 void IRAM_ATTR NibeBus::rx_byte_(uint8_t b, uint32_t ts, uint8_t flags) {
-  (void) flags;  // ninth-bit fact belongs to the transport; this FSM is position-based
-  // intra-frame byte-gap tracking (diagnostics): body bytes only — the leading gap belongs to the exchange
-  if (this->st_ >= State::S_F_SENDER_HI && this->st_ <= State::S_F_CHK) {
-    uint32_t d = ts - this->last_byte_ts_;
-    if (d > this->f_max_gap_us_)
-      this->f_max_gap_us_ = d;
-  }
-  this->last_byte_ts_ = ts;
-
-  switch (this->st_) {
-    case S_BOUNDARY:
-      this->at_boundary_(b, ts);
-      break;
-    case S_POLL_HI:
-      this->at_poll_lo_(b, ts);
-      break;
-    case S_CTRL:
-      this->at_ctrl_(b, ts);
-      break;
-    case S_F_SENDER_HI:
-      this->sender_ = ((uint16_t) b) << 8;
-      this->xor_run_ ^= b;
-      this->st_ = S_F_SENDER_LO;
-      break;
-    case S_F_SENDER_LO:
-      this->sender_ |= b;
-      this->xor_run_ ^= b;
-      this->st_ = S_F_LEN;
-      break;
-    case S_F_LEN:
-      this->f_len_ = b;
-      this->f_idx_ = 0;
-      this->xor_run_ ^= b;
-      if (b > FRAME_MAX_DATA) {  // exactly the len f_data_ buffers; real frames stay under 32 (rows ~25, sensor blocks ~19). A larger declared len would over-read f_data_ at the checksum anyway
-        this->anomalies_++;
-        this->push_event_(EventT{ts, EV_ANOMALY, AN_FRAME_ABORT, this->sender_, b, 0});
-        this->st_ = S_HUNT;
-      } else if (b == 0) {
-        this->st_ = S_F_CHK;
-      } else {
-        this->st_ = S_F_DATA;
-      }
-      break;
-    case S_F_DATA:
-      if (this->f_idx_ < FRAME_MAX_DATA)
-        this->f_data_[this->f_idx_] = b;
-      this->f_idx_++;
-      this->xor_run_ ^= b;
-      if (this->f_idx_ >= this->f_len_)
-        this->st_ = S_F_CHK;
-      break;
-    case S_F_CHK:
-      this->at_chk_(b, ts);
-      break;
-    case S_POST_FRAME:
-      this->at_post_frame_(b, ts);
-      break;
-    case S_HUNT:
-      if (b == CTRL_ETX) {
-        this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
-        this->st_ = S_BOUNDARY;
-      }
-      break;
-  }
-}
-
-/// Boundary byte dispatch: poll-pair hi candidates, stray control bytes, or a frame start.
-void IRAM_ATTR NibeBus::at_boundary_(uint8_t b, uint32_t ts) {
-  if (b == 0x00 || b == 0x41) {  // poll hi: nodes are 00xx (VVM accessories/display), F2025 = 41xx
-    this->poll_hi_ = b;
-    this->st_ = S_POLL_HI;
-  } else if (b == CTRL_ACK) {
-    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
-    if (this->enq_pending_ && this->emulating()) {
-      // only a poll pair revokes the grant: this ACK (across a gap) is ours — deliver through the grant window
-      this->arm_reply_(RP_FRAME, 0, ts, GRANT_FRAME_DELAY_US);
-      this->enq_pending_ = false;
-    } else if (this->we_own_close_ && this->emulating() && this->bus_ != nullptr) {
-      // sender-closes: this ACK is the master's receipt for OUR frame — we owe the ETX ~+670 us later
-      this->arm_reply_(RP_CTRL, CTRL_ETX, ts, FRAME_CLOSE_DELAY_US);
-      this->we_own_close_ = false;  // the close is armed/fired — exactly once
-    }
-  } else if (b == CTRL_ENQ || b == CTRL_NAK || b == CTRL_ETX) {
-    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
-  } else {
-    this->begin_frame_(b);
-  }
-}
-
-/// Second byte of a poll pair: the polled slot opens. Emulator replies right here.
-void IRAM_ATTR NibeBus::at_poll_lo_(uint8_t b, uint32_t ts) {
-  uint16_t addr = ((uint16_t) this->poll_hi_ << 8) | b;
-  this->polled_addr_ = addr;
-  this->slot_ours_ = (addr == this->my_addr_);
-  this->enq_pending_ = false;  // a new exchange opened; the old grant is void
-  // any poll pair voids an in-flight paced feed: another exchange opened — stale bytes must not spray
-  this->paced_k_ = 0;
-  this->paced_n_ = 0;
-
-  this->push_event_(EventT{ts, EV_POLL, 0, addr, 0, 0});
-  if (addr == this->my_addr_) {
-    this->polls_own_++;
-    this->we_own_close_ = false;  // the master moved on; no close is owed
-    if (this->emulating()) {
-      // ENQ while we owe the master a frame, plain ACK otherwise — the tx queue is the single source of truth
-      uint32_t h = q_load_(&this->txq_head_);
-      uint32_t t = q_load_(&this->txq_tail_);
-      if (this->rows_seen_ != 0) {
-        // first content row: PEEK past expired requests (purge_stale_requests_ owns the pop); keys survive by data[0]
-        while (h != t && tx_is_request_(this->tx_queue_[t % TX_QUEUE_N]))
-          t = (t + 1) % (2 * TX_QUEUE_N);
-      }
-      bool have_real = false;  // non-request frame queued (key / menu reply)
-      for (uint32_t i = t; i != h; i = (i + 1) % (2 * TX_QUEUE_N))
-        if (!tx_is_request_(this->tx_queue_[i % TX_QUEUE_N]))
-          have_real = true;
-      uint8_t reply;
-      if (h == t) {
-        reply = CTRL_ACK;  // nothing deliverable
-        this->enq_streak_ = 0;
-        this->bare_owed_ = 0;
-      } else if (have_real) {
-        reply = CTRL_ENQ;  // real answers are never throttled (don't starve)
-        this->enq_streak_ = 0;
-        this->bare_owed_ = 0;
-      } else if (this->bare_owed_ > 0) {
-        reply = CTRL_ACK;  // breath poll: requests stay queued, the master
-        this->bare_owed_--;    // pushes content into the free slots (hypotheses.md 1)
-      } else if (this->enq_streak_ >= ANNOUNCE_BURST) {
-        reply = CTRL_ACK;  // burst spent: open bare slots for the master
-        this->enq_streak_ = 0;
-        this->bare_owed_ = ANNOUNCE_BREATH - 1;
-      } else {
-        reply = CTRL_ENQ;
-        this->enq_streak_++;
-      }
-      // mute-turnaround: the reply tick fires the answer into the master's listening window (+0.8-2.4 ms; protocol.md)
-      this->arm_reply_(RP_CTRL, reply, ts, POLL_REPLY_DELAY_US);
-      // no self-close: the MASTER closes idle exchanges — our self-close collided with its close and corrupted the bus
-    }
-  } else {
-    this->polls_other_++;
-  }
-  this->st_ = S_CTRL;
-}
-
-/// Response/continuation slot of the just-polled exchange.
-void IRAM_ATTR NibeBus::at_ctrl_(uint8_t b, uint32_t ts) {
-  if (this->replied_ && b == this->reply_byte_ && (ts - this->reply_ts_) < 4 * this->byte_us_) {
-    // our own reply leaking through the transceiver/isolator — hardware mutes most of these
+  const bool marked = (flags & rs485_bus::RXF_HB9) != 0;
+  // hardware mutes the receiver while transmitting; this stateful filter is belt-and-braces (protocol.md)
+  if (this->ws_ == WS_CTRL && b == this->reply_byte_ && (ts - this->reply_ts_) < 4 * this->byte_us_) {
     this->echo_filtered_++;
     return;
   }
-  if (b == CTRL_ACK) {
-    this->push_event_(EventT{ts, EV_CTRL, b, this->polled_addr_, 0, 0});
-    if (this->enq_pending_ && this->slot_ours_) {
-      // grant -> frames start ~+160 us (GRANT_FRAME_DELAY_US) — the queue head is taken, never retried
-      this->arm_reply_(RP_FRAME, 0, ts, GRANT_FRAME_DELAY_US);
-      this->enq_pending_ = false;  // the pending fire owns the delivery now
-    }
-    this->replied_ = false;
-    this->st_ = S_BOUNDARY;
-  } else if (b == CTRL_ENQ || b == CTRL_NAK || b == CTRL_ETX) {
-    this->push_event_(EventT{ts, EV_CTRL, b, this->polled_addr_, 0, 0});
-    this->replied_ = false;
-    this->st_ = S_BOUNDARY;
-  } else if (b == 0x00 || b == 0x41) {
-    // node silent; master moved straight to the next poll
-    this->replied_ = false;
-    this->poll_hi_ = b;
-    this->st_ = S_POLL_HI;
-  } else {
-    // a frame arrives into the slot (rows after our ACK) or from a node after its ENQ/grant
-    this->replied_ = false;
-    this->begin_frame_(b);
-  }
+  this->track_byte_(b, ts, marked);
+  this->push_wire_(b, ts, marked ? WRF_MARKED : 0);
 }
 
-void IRAM_ATTR NibeBus::begin_frame_(uint8_t cmd) {
-  this->cmd_ = cmd;
-  this->xor_run_ = cmd;
-  this->f_max_gap_us_ = 0;       // fresh intra-frame spacing measurement
-  this->st_ = S_F_SENDER_HI;
-}
-
-void IRAM_ATTR NibeBus::at_chk_(uint8_t b, uint32_t ts) {
-  if (b != this->xor_run_ && this->chk_rescue_) {
-    // len-lie rescue: some frames carry one byte more than len declares (0x71) — absorb, retest chk, once per frame
-    this->chk_rescue_ = false;
-    if (this->f_idx_ < FRAME_MAX_DATA) {
-      this->f_data_[this->f_idx_++] = b;
-      this->f_len_++;
-      this->xor_run_ ^= b;
+/// Wire mechanics only: who was polled, when a grant/close is ours, where a frame ends. No checksums, no meaning.
+void IRAM_ATTR NibeBus::track_byte_(uint8_t b, uint32_t ts, bool marked) {
+  switch (this->ws_) {
+    case WS_BOUNDARY: {
+      if (b == 0x00 || b == 0x41) {  // poll hi: nodes are 00xx (VVM accessories/display), F2025 = 41xx
+        this->ws_poll_hi_ = b;
+        this->ws_ = WS_POLL_HI;
+      } else if (b == CTRL_ACK) {
+        if (this->enq_pending_ && this->emulating()) {
+          // only a poll pair revokes the grant: this ACK (across a gap) is ours — deliver through the window
+          this->arm_reply_(RP_FRAME, 0, ts, GRANT_FRAME_DELAY_US);
+          this->enq_pending_ = false;
+        } else if (this->we_own_close_ && this->emulating()) {
+          // sender-closes: this ACK is the master's receipt for OUR frame — we owe the ETX ~+670 us later
+          this->arm_reply_(RP_CTRL, CTRL_ETX, ts, FRAME_CLOSE_DELAY_US);
+          this->we_own_close_ = false;  // the close is armed/fired — exactly once
+        }
+      } else if (b != CTRL_ENQ && b != CTRL_NAK && b != CTRL_ETX) {
+        this->ws_ = WS_FRAME_HDR;
+        this->ws_skip_ = 2;  // sender hi/lo; the len byte is read by WS_FRAME_LEN
+      }
+      break;
     }
-    this->push_event_(EventT{ts, EV_CTRL, 0x00, 0, 0, 1});  // marker: len was off-by-one
-    return;  // stay in S_F_CHK — the next byte is the new chk candidate
-  }
-  this->chk_rescue_ = true;
-  if (b != this->xor_run_) {
-    this->frames_bad_++;
-    this->anomalies_++;
-    this->push_event_(EventT{ts, EV_FRAME_BAD, this->cmd_, this->sender_, this->f_len_, 0});
-    this->push_event_(EventT{ts, EV_ANOMALY, AN_DESYNC_HUNT, 0, 0, 0});
-    this->st_ = S_HUNT;
-    return;
-  }
-  this->frames_ok_++;
-  this->f_gap_report_us_ = this->f_max_gap_us_;  // task side reads this per drain
-  uint16_t arena = 0xFFFF;
-  size_t n = this->f_idx_;
-  if (n > 0) {  // single producer (ISR) apart from the event-ring publication
-    uint32_t off = this->arena_head_ % ARENA_CAP;
-    if (off + n > ARENA_CAP)
-      off = 0;  // wrap to the front; the tail may be lost to a slow consumer (counted)
-    memcpy(&this->arena_[off], this->f_data_, n);
-    this->arena_head_ = off + n;
-    arena = (uint16_t) off;
-  }
-  this->push_event_(EventT{ts, EV_FRAME, this->cmd_, this->sender_, this->f_len_, arena,
-                           (uint8_t) (this->slot_ours_ ? EVFL_IN_OUR_SLOT : 0)});
-  this->st_ = S_POST_FRAME;
-
-  // push receipts fire late, when quiet (>= PUSH_ACK_DELAY_US; protocol.md) — earlier ACKs collide with bursts
-  if (this->slot_ours_ && this->emulating() && this->bus_ != nullptr) {
-    // wr/rd SPSC: one writer per counter (ISR arms, loop fires) — a shared head+count pair would tear
-    uint8_t rd = __atomic_load_n(&this->push_ack_rd_, __ATOMIC_ACQUIRE);
-    uint8_t wr = __atomic_load_n(&this->push_ack_wr_, __ATOMIC_RELAXED);
-    if ((uint8_t) (wr - rd) < 4) {
-      this->push_acks_[wr % 4] = ts;
-      __atomic_store_n(&this->push_ack_wr_, (uint8_t) (wr + 1), __ATOMIC_RELEASE);
-    } else {
-      this->anomalies_++;  // more pushes than the panel would queue receipts for
-      this->push_event_(EventT{ts, EV_ANOMALY, AN_STRAY_CTRL, 0, 0, 0});
+    case WS_POLL_HI: {
+      const uint16_t addr = ((uint16_t) this->ws_poll_hi_ << 8) | b;
+      this->slot_ours_ = (addr == this->my_addr_);
+      this->enq_pending_ = false;  // a new exchange opened; the old grant is void
+      this->paced_k_ = 0;          // any poll pair voids an in-flight paced feed
+      this->paced_n_ = 0;
+      if (this->slot_ours_)
+        this->we_own_close_ = false;  // the master moved on; no close is owed
+      this->ws_ = WS_CTRL;
+      break;
     }
-  }
-
-}
-
-/// Frame is on the wire; expect the sender's ETX (an ACK may interleave).
-void IRAM_ATTR NibeBus::at_post_frame_(uint8_t b, uint32_t ts) {
-  if (b == CTRL_ETX || b == CTRL_ENQ) {
-    // ETX closes the exchange; an ENQ from the polled node answers a master push and re-arms the parse
-    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
-    this->st_ = S_BOUNDARY;
-  } else if (b == CTRL_ACK || b == CTRL_NAK) {
-    this->push_event_(EventT{ts, EV_CTRL, b, 0, 0, 0});
-  } else if (b == 0x00 || b == 0x41) {
-    // missing ETX; salvage by treating the pair as the next poll and move on
-    this->anomalies_++;
-    this->push_event_(EventT{ts, EV_ANOMALY, AN_STRAY_CTRL, 0, 0, 0});
-    this->poll_hi_ = b;
-    this->st_ = S_POLL_HI;
-  } else {
-    this->anomalies_++;
-    this->push_event_(EventT{ts, EV_ANOMALY, AN_DESYNC_HUNT, 0, 0, 0});
-    this->st_ = S_HUNT;
+    case WS_CTRL:
+      if (b == CTRL_ACK) {
+        if (this->enq_pending_ && this->slot_ours_) {
+          // grant -> frames start ~+160 us (GRANT_FRAME_DELAY_US) — the queue head is taken, never retried
+          this->arm_reply_(RP_FRAME, 0, ts, GRANT_FRAME_DELAY_US);
+          this->enq_pending_ = false;
+        }
+        this->ws_ = WS_BOUNDARY;
+      } else if (b == CTRL_ENQ || b == CTRL_NAK || b == CTRL_ETX) {
+        this->ws_ = WS_BOUNDARY;
+      } else if (b == 0x00 || b == 0x41) {
+        this->ws_poll_hi_ = b;  // node silent; the master moved straight to the next poll
+        this->ws_ = WS_POLL_HI;
+      } else {
+        this->ws_ = WS_FRAME_HDR;  // a frame in the slot (rows after our ACK, or a node after its ENQ)
+        this->ws_skip_ = 2;
+      }
+      break;
+    case WS_FRAME_HDR:
+      if (--this->ws_skip_ == 0)
+        this->ws_ = WS_FRAME_LEN;
+      break;
+    case WS_FRAME_LEN:
+      if (b > FRAME_MAX_DATA) {
+        this->ws_ = WS_HUNT;
+      } else {
+        this->ws_cnt_ = (uint16_t) b + 1;  // data + checksum
+        this->ws_ = WS_FRAME_BODY;
+      }
+      break;
+    case WS_FRAME_BODY:
+      if (marked) {
+        // data bytes are unmarked (protocol.md): a marked byte is a boundary token, so a len-lie resyncs here
+        if (b == 0x00 || b == 0x41) {
+          this->ws_poll_hi_ = b;
+          this->ws_ = WS_POLL_HI;
+          break;
+        }
+        if (b == CTRL_ETX || b == CTRL_ENQ) {
+          this->ws_ = WS_BOUNDARY;
+          break;
+        }
+      }
+      if (this->ws_cnt_ > 0 && --this->ws_cnt_ == 0)
+        this->ws_ = WS_POST_FRAME;
+      break;
+    case WS_POST_FRAME:
+      if (b == CTRL_ETX || b == CTRL_ENQ) {
+        this->ws_ = WS_BOUNDARY;
+      } else if (b == CTRL_ACK || b == CTRL_NAK) {
+        // await the sender's ETX
+      } else if (b == 0x00 || b == 0x41) {
+        // missing ETX; salvage by treating the pair as the next poll and move on
+        this->ws_poll_hi_ = b;
+        this->ws_ = WS_POLL_HI;
+      } else {
+        this->ws_ = WS_HUNT;
+      }
+      break;
+    case WS_HUNT:
+      if (b == CTRL_ETX)
+        this->ws_ = WS_BOUNDARY;
+      break;
   }
 }
 
 void IRAM_ATTR NibeBus::gap_(uint32_t ts) {
-  uint32_t len = ts - this->last_byte_ts_;
-  this->push_event_(EventT{ts, EV_GAP, 0, (uint16_t) (len > 0xFFFF ? 0xFFFF : len), 0, 0});
-  this->st_ = S_BOUNDARY;
-  this->replied_ = false;
+  this->push_wire_gap_(ts);
+  this->ws_ = WS_BOUNDARY;
   // enq_pending_ SURVIVES the gap: masters may grant an ENQ milliseconds later
 }
 
@@ -431,6 +299,16 @@ void IRAM_ATTR NibeBus::fire_pending_reply_(uint32_t now) {
   const uint32_t delay_var = this->reply_delay_var_;
   if (__sync_val_compare_and_swap(&this->reply_fire_at_us_, at, 0u) != at)
     return;
+#ifdef USE_ESP32
+  // device only: a reply the task armed too late for its window is dropped, not sent into the next
+  // exchange. A few character times of grace covers tick jitter; host builds have no real master
+  // listening window — the sim's loop is the fire clock.
+  if ((int32_t) (now - at) > (int32_t) (4 * this->byte_us_)) {
+    this->reply_drops_++;
+    this->enq_pending_ = false;
+    return;
+  }
+#endif
   if (!this->emulating()) {
     this->enq_pending_ = false;
     return;  // kill switch between arm and fire: transmit nothing
@@ -447,8 +325,7 @@ void IRAM_ATTR NibeBus::fire_pending_reply_(uint32_t now) {
   }
   if (kind == RP_CTRL) {
     if (this->reply_to_poll_(now, ctrl_var)) {
-      this->replied_ = true;  // arm the echo discriminator at the real TX moment
-      this->reply_byte_ = ctrl_var;
+      this->reply_byte_ = ctrl_var;  // echo discriminator, armed at the real TX moment
       this->reply_ts_ = now;
     }
   } else if (kind == RP_FRAME) {
@@ -469,6 +346,8 @@ void NibeBus::setup() {
 #endif
   if (this->bus_ != nullptr)
     this->byte_us_ = 11u * (1000000u / this->bus_->get_baud_rate());  // 9-bit chars + stop
+  this->parser_.set_sink(this);
+  this->parser_.set_address(this->my_addr_);
   ESP_LOGCONFIG(TAG, "NibeBus: %s role, address %04X", this->role_name(), this->my_addr_);
 #ifdef USE_ESP32
   if (!this->emulator_intent_ || !this->transmit_capable_())
@@ -570,247 +449,321 @@ bool NibeBus::trigger_announce() {
   return true;
 }
 
-// one engine event (task context): logging, entity updates, loop-latency-OK emulator transitions
-void NibeBus::process_event_(const EventT &ev) {
-  // wire stamps print with true wire deltas; loop-synthetic events carry ts=0
-  char tail[28];
-  if (ev.ts != 0) {
-    uint32_t d = ev.ts - this->last_ev_ts_;  // unsigned wrap-safety across rolls
-    snprintf(tail, sizeof(tail), " @%lu (+%lu)", (unsigned long) ev.ts, (unsigned long) d);
-    this->last_ev_ts_ = ev.ts;
-  } else {
-    tail[0] = 0;  // synthetic loop-time events (no wire moment)
+void NibeBus::tail_(uint32_t ts, char *out, size_t cap) {
+  if (ts == 0) {
+    out[0] = 0;  // synthetic loop-time events (no wire moment)
+    return;
   }
-  switch (ev.type) {
-    case EV_POLL: {
-      if (ev.x == this->my_addr_) {
-        this->last_own_poll_ms_ = esphome::millis();  // loop-clock bookkeeping
-        ESP_LOGD(TAG, "poll %04X (own)%s", ev.x, tail);
-      } else if (this->log_level_ >= 2) {
-        ESP_LOGD(TAG, "poll %04X%s", ev.x, tail);
-      }
-      break;
-    }
-    case EV_CTRL: {
-      if (this->log_level_ >= 2)
-        ESP_LOGD(TAG, "ctrl %02X (slot %04X)%s", ev.a, ev.x, tail);
-      break;
-    }
-    case EV_TX: {
-      if (ev.a == 0xFE && ev.len == 0) {
-        // paced feed done: report the achieved inter-byte cadence
-        ESP_LOGI(TAG, "tx feed done: gaps %lu-%lu us%s",
-                 (unsigned long) this->paced_gap_min_, (unsigned long) this->paced_gap_max_, tail);
+  uint32_t d = ts - this->last_ev_ts_;  // unsigned wrap-safety across rolls
+  snprintf(out, cap, " @%lu (+%lu)", (unsigned long) ts, (unsigned long) d);
+  this->last_ev_ts_ = ts;
+}
+
+void NibeBus::parse_wire_() {
+  uint32_t h = q_load_(&this->wire_head_);
+  uint32_t t = q_load_(&this->wire_tail_);
+  while (t != h) {
+    this->parser_.feed(this->wire_[t]);
+    t = (t + 1) % WIRE_RING_N;
+  }
+  q_store_(&this->wire_tail_, t);
+}
+
+void NibeBus::drain_tx_notices_() {
+  uint32_t h = q_load_(&this->tx_notice_head_);
+  uint32_t t = q_load_(&this->tx_notice_tail_);
+  while (t != h) {
+    const TxNotice &n = this->tx_notices_[t % TX_NOTICE_N];
+    char tail[28];
+    this->tail_(n.ts, tail, sizeof(tail));
+    switch (n.kind) {
+      case TXN_REPLY:
+        ESP_LOGI(TAG, "tx: %02X len=%u%s", n.byte, n.len, tail);
         break;
-      }
-      ESP_LOGI(TAG, "tx: %02X len=%u%s", ev.a, ev.len, tail);
-      if (ev.len > 1) {
+      case TXN_FRAME: {
+        ESP_LOGI(TAG, "tx: %02X len=%u%s", n.byte, n.len, tail);
         // same format as received frames — our own sent frame, byte-for-byte
         uint8_t fbuf[TX_FRAME_MAX];
-        uint8_t n = this->tx_log_len_ < TX_FRAME_MAX ? this->tx_log_len_ : TX_FRAME_MAX;
-        for (uint8_t i = 0; i < n; i++)  // stack copy off the volatile mirror
+        uint8_t len = this->tx_log_len_ < TX_FRAME_MAX ? this->tx_log_len_ : TX_FRAME_MAX;
+        for (uint8_t i = 0; i < len; i++)  // stack copy off the volatile mirror
           fbuf[i] = this->tx_log_buf_[i];
-        const uint8_t *fr = fbuf;
-        if (n >= 5 && fr[0] == ev.a) {
+        if (len >= 5 && fbuf[0] == n.byte) {
           char hexbuf[3 * 32 + 1];
           hexbuf[0] = 0;
-          if (fr[3] > 0 && fr[3] <= 32)
-            hex_(hexbuf, sizeof(hexbuf), &fr[4], fr[3]);
-          ESP_LOGI(TAG, "  tx frame cmd=%02X sender=%02X%02X len=%u data=%s chk=%02X",
-                   fr[0], fr[1], fr[2], (unsigned) fr[3], hexbuf, fr[4 + fr[3]]);
+          if (fbuf[3] > 0 && fbuf[3] <= 32)
+            hex_(hexbuf, sizeof(hexbuf), &fbuf[4], fbuf[3]);
+          ESP_LOGI(TAG, "  tx frame cmd=%02X sender=%02X%02X len=%u data=%s chk=%02X", fbuf[0], fbuf[1],
+                   fbuf[2], (unsigned) fbuf[3], hexbuf, fbuf[4 + fbuf[3]]);
         }
+        if (n.byte == CMD_ANNOUNCE)
+          this->pump_announces_();
+        break;
       }
-      if (ev.a == CMD_ANNOUNCE)
-        this->pump_announces_();
-      break;
+      case TXN_FEED_DONE:
+        // paced feed done: report the achieved inter-byte cadence
+        ESP_LOGI(TAG, "tx feed done: gaps %lu-%lu us%s", (unsigned long) this->paced_gap_min_,
+                 (unsigned long) this->paced_gap_max_, tail);
+        break;
+      case TXN_TX_REFUSED:
+        ESP_LOGW(TAG, "anomaly: tx refused (dropped, NOT retried)%s", tail);
+        break;
     }
-    case EV_GAP: {
-      this->last_gap_us_ = ev.x;
-      if (this->log_level_ >= 2)
-        ESP_LOGD(TAG, "gap %u us%s", ev.x, tail);
-      break;
-    }
-    case EV_ANOMALY: {
-      const char *why = "?";
-      switch (ev.a) {
-        case AN_DESYNC_HUNT: why = "checksum failed -> hunting ETX"; break;
-        case AN_FRAME_ABORT: why = "frame len absurd"; break;
-        case AN_ECHO_FILTERED: why = "echo filtered"; break;
-        case AN_TX_REFUSED: why = "tx refused (dropped, NOT retried)"; break;
-        case AN_OWN_POLL_TIMEOUT: why = "master stopped polling us"; break;
-        case AN_STRAY_CTRL: why = "control byte/reply missing somewhere"; break;
-      }
-      ESP_LOGW(TAG, "anomaly: %s", why);
-      if ((ev.a == AN_DESYNC_HUNT || ev.a == AN_FRAME_ABORT || ev.a == AN_STRAY_CTRL) &&
-          this->bus_ != nullptr)
-        this->bus_->debug_dump_recent();
-      break;
-    }
-    case EV_FRAME_BAD: {
-      ESP_LOGW(TAG, "BAD frame cmd=%02X sender=%04X len=%u%s", ev.a, ev.x, ev.len, tail);
-      break;
-    }
-    case EV_FRAME: {
-      uint8_t payload[FRAME_MAX_DATA];
-      uint8_t n = 0;
-      if (ev.arena != 0xFFFF && ev.len > 0) {
-        n = (uint8_t) std::min((size_t) ev.len, (size_t) FRAME_MAX_DATA);
-        memcpy(payload, &this->arena_[ev.arena], n);
-      }
-      char hexbuf[3 * FRAME_MAX_DATA + 1];
-      hexbuf[0] = 0;
-      hex_(hexbuf, sizeof(hexbuf), payload, n);
-      if (this->log_level_ >= 1) {
-        ESP_LOGD(TAG, "frame cmd=%02X sender=%04X len=%u data=%s%s", ev.a, ev.x, (unsigned) ev.len, hexbuf, tail);
-        if (this->log_level_ >= 2)
-          ESP_LOGD(TAG, "  intra-byte gap max: %lu us", (unsigned long) this->f_gap_report_us_);
-      }
+    t = (t + 1) % TX_NOTICE_N;
+  }
+  q_store_(&this->tx_notice_tail_, t);
+}
 
-      // display rows ONLY in our own slot — a probe must not count the panel's rows (dead-arms the pump)
-      if (ev.x == ADDR_VVM300 && (ev.flags & EVFL_IN_OUR_SLOT) &&
-          ev.a >= CMD_ROW_BASE && ev.a <= CMD_ROW_BASE + 3) {
-        uint8_t row = ev.a - CMD_ROW_BASE + 1;
-        if (row >= 2) {  // rows 2..4: latin-1 text, NUL padded
-          bool first_content = (this->rows_seen_ == 0);
-          this->rows_seen_ |= (uint8_t) (1u << (row - 2));
-          if (first_content) {
-            // the repeat phase ends at the FIRST content row (protocol.md "The display slot")
-            this->announce_pump_active_ = 0;  // queued requests pop at the next poll
-            ESP_LOGI(TAG, "first content row (row %u) received: request pump off", row);
-          }
-          if (this->rows_complete_()) {
-            ESP_LOGI(TAG, "rows 2-4 received: display content complete");
-          }
-          std::string text;
-          text.reserve(n + 4);
-          for (int i = 0; i < n && payload[i] != 0; i++) {
-            uint8_t c = payload[i];
-            if (c < 0x80) {
-              text.push_back((char) c);
-            } else {  // latin-1 -> utf-8
-              text.push_back((char) (0xC0 | (c >> 6)));
-              text.push_back((char) (0x80 | (c & 0x3F)));
-            }
-          }
-#ifdef USE_NIBE_DISPLAY_WEB
-          strlcpy(this->snap_rows_[row - 2], text.c_str(), sizeof(this->snap_rows_[0]));
-#endif
-#ifdef USE_TEXT_SENSOR
-          for (const auto &sink : this->row_sinks_)
-            if (sink.row == row)
-              sink.sensor->publish_state(text);
-#endif
-        } else {  // row 1: binary symbol strip (undocumented bits; publish raw hex for now)
-#ifdef USE_NIBE_DISPLAY_WEB
-          this->sym_raw_len_ = std::min((int) n, (int) sizeof(this->sym_raw_));
-          memcpy(this->sym_raw_, payload, this->sym_raw_len_);
-#endif
-#ifdef USE_TEXT_SENSOR
-          for (const auto &sink : this->row_sinks_)
-            if (sink.row == 1)
-              sink.sensor->publish_state(hexbuf);
-#endif
-        }
-      }
+void NibeBus::on_poll(uint32_t ts, uint16_t addr) {
+  char tail[28];
+  this->tail_(ts, tail, sizeof(tail));
+  if (addr != this->my_addr_) {
+    this->polls_other_++;
+    if (this->log_level_ >= 2)
+      ESP_LOGD(TAG, "poll %04X%s", addr, tail);
+    return;
+  }
+  this->polls_own_++;
+  this->last_own_poll_ms_ = esphome::millis();  // loop-clock bookkeeping
+  ESP_LOGD(TAG, "poll %04X (own)%s", addr, tail);
+  if (!this->emulating())
+    return;
+  // ENQ while we owe the master a frame, plain ACK otherwise — the tx queue is the single source of truth
+  uint32_t h = q_load_(&this->txq_head_);
+  uint32_t t = q_load_(&this->txq_tail_);
+  if (this->rows_seen_ != 0) {
+    // first content row: PEEK past expired requests (purge_stale_requests_ owns the pop); keys survive by data[0]
+    while (h != t && tx_is_request_(this->tx_queue_[t % TX_QUEUE_N]))
+      t = (t + 1) % (2 * TX_QUEUE_N);
+  }
+  bool have_real = false;  // non-request frame queued (key / menu reply)
+  for (uint32_t i = t; i != h; i = (i + 1) % (2 * TX_QUEUE_N))
+    if (!tx_is_request_(this->tx_queue_[i % TX_QUEUE_N]))
+      have_real = true;
+  uint8_t reply;
+  if (h == t) {
+    reply = CTRL_ACK;  // nothing deliverable
+    this->enq_streak_ = 0;
+    this->bare_owed_ = 0;
+  } else if (have_real) {
+    reply = CTRL_ENQ;  // real answers are never throttled (don't starve)
+    this->enq_streak_ = 0;
+    this->bare_owed_ = 0;
+  } else if (this->bare_owed_ > 0) {
+    reply = CTRL_ACK;  // breath poll: requests stay queued, the master
+    this->bare_owed_--;    // pushes content into the free slots (hypotheses.md 1)
+  } else if (this->enq_streak_ >= ANNOUNCE_BURST) {
+    reply = CTRL_ACK;  // burst spent: open bare slots for the master
+    this->enq_streak_ = 0;
+    this->bare_owed_ = ANNOUNCE_BREATH - 1;
+  } else {
+    reply = CTRL_ENQ;
+    this->enq_streak_++;
+  }
+  // mute-turnaround: the reply tick fires the answer into the master's listening window (+0.8-2.4 ms; protocol.md)
+  this->arm_reply_(RP_CTRL, reply, ts, POLL_REPLY_DELAY_US);
+  // no self-close: the MASTER closes idle exchanges — our self-close collided with its close and corrupted the bus
+}
 
-      // F2025 sensor block: passive decode only, we are not part of that exchange (commands.md)
-      if (ev.x == ADDR_F2025 && ev.a == CMD_SENSOR) {
-#ifdef USE_TEXT_SENSOR
-        for (const auto &sink : this->f2025_word_hex_sinks_) {
-          size_t need = ((size_t) sink.first + 1) * 2;
-          if ((size_t) n >= need) {
-            uint16_t raw = (uint16_t) payload[2 * sink.first] | ((uint16_t) payload[2 * sink.first + 1] << 8);
-            char hex[8];
-            snprintf(hex, sizeof(hex), "0x%04X", (unsigned) raw);
-            sink.second->publish_state(hex);
-          }
-        }
-#endif
-        if (this->log_level_ >= 1)
-          ESP_LOGD(TAG, "F2025 sensor block (word0..4: %.1f %.1f %.1f %.1f %.1f)",
-                   n >= 2 ? ((int16_t)(payload[0] | (payload[1] << 8))) / 10.0f : 0.0f,
-                   n >= 4 ? ((int16_t)(payload[2] | (payload[3] << 8))) / 10.0f : 0.0f,
-                   n >= 6 ? ((int16_t)(payload[4] | (payload[5] << 8))) / 10.0f : 0.0f,
-                   n >= 8 ? ((int16_t)(payload[6] | (payload[7] << 8))) / 10.0f : 0.0f,
-                   n >= 10 ? ((int16_t)(payload[8] | (payload[9] << 8))) / 10.0f : 0.0f);
+void NibeBus::on_ctrl(uint32_t ts, uint8_t byte, uint16_t ctx) {
+  char tail[28];
+  this->tail_(ts, tail, sizeof(tail));
+  if (this->log_level_ >= 2)
+    ESP_LOGD(TAG, "ctrl %02X (slot %04X)%s", byte, ctx, tail);
+}
+
+void NibeBus::on_gap(uint32_t ts, uint32_t gap_us) {
+  char tail[28];
+  this->tail_(ts, tail, sizeof(tail));
+  this->last_gap_us_ = gap_us > 0xFFFF ? 0xFFFF : gap_us;
+  if (this->log_level_ >= 2)
+    ESP_LOGD(TAG, "gap %lu us%s", (unsigned long) gap_us, tail);
+}
+
+void NibeBus::on_anomaly(uint32_t ts, uint8_t code) {
+  char tail[28];
+  this->tail_(ts, tail, sizeof(tail));
+  this->anomalies_++;
+  const char *why = "?";
+  switch (code) {
+    case AN_DESYNC_HUNT: why = "checksum failed -> hunting ETX"; break;
+    case AN_FRAME_ABORT: why = "frame len absurd"; break;
+    case AN_ECHO_FILTERED: why = "echo filtered"; break;
+    case AN_TX_REFUSED: why = "tx refused (dropped, NOT retried)"; break;
+    case AN_OWN_POLL_TIMEOUT: why = "master stopped polling us"; break;
+    case AN_STRAY_CTRL: why = "control byte/reply missing somewhere"; break;
+  }
+  ESP_LOGW(TAG, "anomaly: %s%s", why, tail);
+  if ((code == AN_DESYNC_HUNT || code == AN_FRAME_ABORT || code == AN_STRAY_CTRL) && this->bus_ != nullptr)
+    this->bus_->debug_dump_recent();
+}
+
+void NibeBus::on_frame_bad(uint32_t ts, uint8_t cmd, uint16_t sender, uint8_t len) {
+  char tail[28];
+  this->tail_(ts, tail, sizeof(tail));
+  ESP_LOGW(TAG, "BAD frame cmd=%02X sender=%04X len=%u%s", cmd, sender, len, tail);
+}
+
+void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t *payload, uint8_t len,
+                       bool in_our_slot) {
+  char tail[28];
+  this->tail_(ts, tail, sizeof(tail));
+  const uint8_t n = len > FRAME_MAX_DATA ? (uint8_t) FRAME_MAX_DATA : len;
+  char hexbuf[3 * FRAME_MAX_DATA + 1];
+  hexbuf[0] = 0;
+  hex_(hexbuf, sizeof(hexbuf), payload, n);
+  if (this->log_level_ >= 1) {
+    ESP_LOGD(TAG, "frame cmd=%02X sender=%04X len=%u data=%s%s", cmd, sender, (unsigned) len, hexbuf, tail);
+    if (this->log_level_ >= 2)
+      ESP_LOGD(TAG, "  intra-byte gap max: %lu us", (unsigned long) this->parser_.last_frame_gap_us());
+  }
+
+  // display rows ONLY in our own slot — a probe must not count the panel's rows (dead-arms the pump)
+  if (sender == ADDR_VVM300 && in_our_slot && cmd >= CMD_ROW_BASE && cmd <= CMD_ROW_BASE + 3) {
+    uint8_t row = cmd - CMD_ROW_BASE + 1;
+    if (row >= 2) {  // rows 2..4: latin-1 text, NUL padded
+      bool first_content = (this->rows_seen_ == 0);
+      this->rows_seen_ |= (uint8_t) (1u << (row - 2));
+      if (first_content) {
+        // the repeat phase ends at the FIRST content row (protocol.md "The display slot")
+        this->announce_pump_active_ = 0;  // queued requests pop at the next poll
+        ESP_LOGI(TAG, "first content row (row %u) received: request pump off", row);
       }
+      if (this->rows_complete_()) {
+        ESP_LOGI(TAG, "rows 2-4 received: display content complete");
+      }
+      std::string text;
+      text.reserve(n + 4);
+      for (int i = 0; i < n && payload[i] != 0; i++) {
+        uint8_t c = payload[i];
+        if (c < 0x80) {
+          text.push_back((char) c);
+        } else {  // latin-1 -> utf-8
+          text.push_back((char) (0xC0 | (c >> 6)));
+          text.push_back((char) (0x80 | (c & 0x3F)));
+        }
+      }
+#ifdef USE_NIBE_DISPLAY_WEB
+      strlcpy(this->snap_rows_[row - 2], text.c_str(), sizeof(this->snap_rows_[0]));
+#endif
+#ifdef USE_TEXT_SENSOR
+      for (const auto &sink : this->row_sinks_)
+        if (sink.row == row)
+          sink.sensor->publish_state(text);
+#endif
+    } else {  // row 1: binary symbol strip (undocumented bits; publish raw hex for now)
+#ifdef USE_NIBE_DISPLAY_WEB
+      this->sym_raw_len_ = std::min((int) n, (int) sizeof(this->sym_raw_));
+      memcpy(this->sym_raw_, payload, this->sym_raw_len_);
+#endif
+#ifdef USE_TEXT_SENSOR
+      for (const auto &sink : this->row_sinks_)
+        if (sink.row == 1)
+          sink.sensor->publish_state(hexbuf);
+#endif
+    }
+  }
+
+  // F2025 sensor block: passive decode only, we are not part of that exchange (commands.md)
+  if (sender == ADDR_F2025 && cmd == CMD_SENSOR) {
+#ifdef USE_TEXT_SENSOR
+    for (const auto &sink : this->f2025_word_hex_sinks_) {
+      size_t need = ((size_t) sink.first + 1) * 2;
+      if ((size_t) n >= need) {
+        uint16_t raw = (uint16_t) payload[2 * sink.first] | ((uint16_t) payload[2 * sink.first + 1] << 8);
+        char hex[8];
+        snprintf(hex, sizeof(hex), "0x%04X", (unsigned) raw);
+        sink.second->publish_state(hex);
+      }
+    }
+#endif
+    if (this->log_level_ >= 1)
+      ESP_LOGD(TAG, "F2025 sensor block (word0..4: %.1f %.1f %.1f %.1f %.1f)",
+               n >= 2 ? ((int16_t)(payload[0] | (payload[1] << 8))) / 10.0f : 0.0f,
+               n >= 4 ? ((int16_t)(payload[2] | (payload[3] << 8))) / 10.0f : 0.0f,
+               n >= 6 ? ((int16_t)(payload[4] | (payload[5] << 8))) / 10.0f : 0.0f,
+               n >= 8 ? ((int16_t)(payload[6] | (payload[7] << 8))) / 10.0f : 0.0f,
+               n >= 10 ? ((int16_t)(payload[8] | (payload[9] << 8))) / 10.0f : 0.0f);
+  }
 
 #ifdef USE_SENSOR
-      // generic F2025 answer register: u16/s16 LE at a byte offset, scaled (commands.md)
-      if (ev.x == ADDR_F2025) {
-        for (const auto &sink : this->f2025_reg_sinks_) {
-          if (sink.first.cmd != ev.a)
-            continue;
-          size_t need = (size_t) sink.first.offset + 2;
-          if ((size_t) n >= need) {
-            uint16_t raw = (uint16_t) payload[sink.first.offset] | ((uint16_t) payload[sink.first.offset + 1] << 8);
-            float value = sink.first.is_signed ? (float) (int16_t) raw : (float) raw;
-            sink.second->publish_state(value * sink.first.scale);
-          }
-        }
+  // generic F2025 answer register: u16/s16 LE at a byte offset, scaled (commands.md)
+  if (sender == ADDR_F2025) {
+    for (const auto &sink : this->f2025_reg_sinks_) {
+      if (sink.first.cmd != cmd)
+        continue;
+      size_t need = (size_t) sink.first.offset + 2;
+      if ((size_t) n >= need) {
+        uint16_t raw = (uint16_t) payload[sink.first.offset] | ((uint16_t) payload[sink.first.offset + 1] << 8);
+        float value = sink.first.is_signed ? (float) (int16_t) raw : (float) raw;
+        sink.second->publish_state(value * sink.first.scale);
       }
+    }
+  }
 #endif
 
 #ifdef USE_TEXT_SENSOR
-      // F2025 frame hex for the decoding watch (commands.md)
-      if (ev.x == ADDR_F2025) {
-        for (const auto &sink : this->f2025_frame_hex_sinks_)
-          if (sink.first == ev.a)
-            sink.second->publish_state(hexbuf);
-      }
+  // F2025 frame hex for the decoding watch (commands.md)
+  if (sender == ADDR_F2025) {
+    for (const auto &sink : this->f2025_frame_hex_sinks_)
+      if (sink.first == cmd)
+        sink.second->publish_state(hexbuf);
+  }
 #endif
 
-      // -- our address emitting = panel traffic (physical panel, or our own frames echoed) --
-      uint16_t key_src = this->my_addr_;
-      // key frames: data[0] discriminates; data[1] is the relayed system value (commands.md)
-      if (ev.x == key_src && ev.a == CMD_KEY && ev.len == 4 && n >= 2 && payload[0] <= 4) {
-        uint8_t key = payload[0];
-        const char *name = key <= 4 ? KEY_NAMES[key] : "?";
-        ESP_LOGI(TAG, "key frame: 0x%02X (%s)", key, name);
+  // -- our address emitting = panel traffic (physical panel, or our own frames echoed) --
+  // key frames: data[0] discriminates; data[1] is the relayed system value (commands.md)
+  if (sender == this->my_addr_ && cmd == CMD_KEY && len == 4 && n >= 2 && payload[0] <= 4) {
+    uint8_t key = payload[0];
+    const char *name = KEY_NAMES[key];
+    ESP_LOGI(TAG, "key frame: 0x%02X (%s)", key, name);
 #ifdef USE_TEXT_SENSOR
-        if (this->key_name_sink_ != nullptr)
-          this->key_name_sink_->publish_state(name);
+    if (this->key_name_sink_ != nullptr)
+      this->key_name_sink_->publish_state(name);
 #endif
-      }
-      if (ev.x == this->my_addr_ && ev.a == CMD_ANNOUNCE && ev.len == 4 && n >= 2 && payload[0] == 0x40) {
-        ESP_LOGI(TAG, "display request frame from %04X (relay byte: %02X)", ev.x, payload[1]);
-      }
+  }
+  if (sender == this->my_addr_ && cmd == CMD_ANNOUNCE && len == 4 && n >= 2 && payload[0] == 0x40) {
+    ESP_LOGI(TAG, "display request frame from %04X (relay byte: %02X)", sender, payload[1]);
+  }
 
-      // 0x22 is the master->F2025 boot link check; announces are self-initiated (hypotheses.md)
-      if (this->emulating() && ev.x == ADDR_VVM300 && (ev.flags & EVFL_IN_OUR_SLOT) &&
-          ev.a == CMD_MENU2 && this->menu_reply_) {
-        ESP_LOGI(TAG, "master 0x62 menu request: queueing reply");
-        uint8_t data[1] = {0x0F};
-        this->queue_frame_(CMD_MENU2, data, 1);
-      }
+  // 0x22 is the master->F2025 boot link check; announces are self-initiated (hypotheses.md)
+  if (this->emulating() && sender == ADDR_VVM300 && in_our_slot && cmd == CMD_MENU2 && this->menu_reply_) {
+    ESP_LOGI(TAG, "master 0x62 menu request: queueing reply");
+    uint8_t data[1] = {0x0F};
+    this->queue_frame_(CMD_MENU2, data, 1);
+  }
 
-      // clock query: 7-byte BCD + day-of-week reply; opt-in — it sets the master's clock (protocol.md)
-      if (this->emulating() && this->d4_reply_ && ev.x == ADDR_VVM300 && (ev.flags & EVFL_IN_OUR_SLOT) &&
-          ev.a == CMD_CLOCK) {
+  // clock query: 7-byte BCD + day-of-week reply; opt-in — it sets the master's clock (protocol.md)
+  if (this->emulating() && this->d4_reply_ && sender == ADDR_VVM300 && in_our_slot && cmd == CMD_CLOCK) {
 #ifdef USE_TIME
-        esphome::ESPTime t = this->time_source_ != nullptr ? this->time_source_->now() : esphome::ESPTime();
+    esphome::ESPTime t = this->time_source_ != nullptr ? this->time_source_->now() : esphome::ESPTime();
 #else
-        // no time platform: host epoch is real time, a bare ESP starts at 1970 — is_valid() silences that
-        esphome::ESPTime t = esphome::ESPTime::from_epoch_local(::time(nullptr));
+    // no time platform: host epoch is real time, a bare ESP starts at 1970 — is_valid() silences that
+    esphome::ESPTime t = esphome::ESPTime::from_epoch_local(::time(nullptr));
 #endif
-        if (!t.is_valid()) {
-          ESP_LOGW(TAG, "master 0xD4 clock query: our clock is not synced/valid — not answering");
-        } else {
-          uint8_t (*bcd)(uint8_t) = [](uint8_t v) -> uint8_t { return (uint8_t) (((v / 10) << 4) | (v % 10)); };
-          // tail = day-of-week, Sunday=1 (protocol.md); d4_tail overrides, 0 = auto
-          uint8_t tail = this->d4_tail_ != 0 ? this->d4_tail_ : t.day_of_week;
-          uint8_t data[7] = {bcd((uint8_t) (t.year % 100)), bcd((uint8_t) t.month), bcd((uint8_t) t.day_of_month),
-                             bcd((uint8_t) t.hour), bcd((uint8_t) t.minute), bcd((uint8_t) t.second), tail};
-          ESP_LOGI(TAG, "master 0xD4 clock query: queueing %02X %02X %02X %02X %02X %02X %02X "
-                        "(%04u-%02u-%02u %02u:%02u:%02u)",
-                   data[0], data[1], data[2], data[3], data[4], data[5], data[6], (unsigned) t.year,
-                   (unsigned) t.month, (unsigned) t.day_of_month, (unsigned) t.hour, (unsigned) t.minute,
-                   (unsigned) t.second);
-          this->queue_frame_(CMD_CLOCK, data, 7);
-        }
-      }
+    if (!t.is_valid()) {
+      ESP_LOGW(TAG, "master 0xD4 clock query: our clock is not synced/valid — not answering");
+    } else {
+      uint8_t (*bcd)(uint8_t) = [](uint8_t v) -> uint8_t { return (uint8_t) (((v / 10) << 4) | (v % 10)); };
+      // tail = day-of-week, Sunday=1 (protocol.md); d4_tail overrides, 0 = auto
+      uint8_t d4_tail = this->d4_tail_ != 0 ? this->d4_tail_ : t.day_of_week;
+      uint8_t data[7] = {bcd((uint8_t) (t.year % 100)), bcd((uint8_t) t.month), bcd((uint8_t) t.day_of_month),
+                         bcd((uint8_t) t.hour), bcd((uint8_t) t.minute), bcd((uint8_t) t.second), d4_tail};
+      ESP_LOGI(TAG, "master 0xD4 clock query: queueing %02X %02X %02X %02X %02X %02X %02X "
+                    "(%04u-%02u-%02u %02u:%02u:%02u)",
+               data[0], data[1], data[2], data[3], data[4], data[5], data[6], (unsigned) t.year, (unsigned) t.month,
+               (unsigned) t.day_of_month, (unsigned) t.hour, (unsigned) t.minute, (unsigned) t.second);
+      this->queue_frame_(CMD_CLOCK, data, 7);
+    }
+  }
 
-      break;
+  // a valid frame in our slot is receipt-ACKed late, when quiet (>= PUSH_ACK_DELAY_US; protocol.md)
+  if (in_our_slot && this->emulating()) {
+    uint8_t wr = this->push_ack_wr_;
+    if ((uint8_t) (wr - this->push_ack_rd_) < 4) {
+      this->push_acks_[wr % 4] = ts;
+      this->push_ack_wr_ = (uint8_t) (wr + 1);
+    } else {
+      this->on_anomaly(ts, AN_STRAY_CTRL);  // more pushes than the panel would queue receipts for
     }
   }
 }
@@ -833,22 +786,18 @@ void NibeBus::emulator_push_ack_tick_() {
   uint8_t ack = CTRL_ACK;  // stack copy (kept off flash on every path, as usual)
   if (this->bus_->send_burst(&ack, 1, false)) {
     this->tx_sent_++;
-    this->push_event_(EventT{now, EV_TX, CTRL_ACK, 0, 0, 0});
+    ESP_LOGI(TAG, "tx: %02X len=0", CTRL_ACK);
   } else {
     this->tx_refused_++;
   }
 }
 
 void NibeBus::loop() {
-  uint32_t h = q_load_(&this->ev_head_);
-  uint32_t t = q_load_(&this->ev_tail_);
-  while (t != h) {
-    this->process_event_(this->events_[t]);
-    t = (t + 1) % EV_RING_N;
-  }
-  q_store_(&this->ev_tail_, t);
+  // wire facts -> parser -> handlers, all task-side (ADR-0001)
+  this->parse_wire_();
+  this->drain_tx_notices_();
 
-  // top up the request queue from loop too: row pushes produce no EV_TX to refill from
+  // top up the request queue from loop too: row pushes produce no tx notice to refill from
   this->pump_announces_();
 
   // mute-turnaround dispatch: device = the 125 us esp_timer tick; loop() is the HOST tick only
@@ -883,8 +832,7 @@ void NibeBus::loop() {
     q_store_(&this->txq_tail_, q_load_(&this->txq_head_));
     ESP_LOGW(TAG, "no polls to %04X for %u s: outbound queue dropped", this->my_addr_,
              (unsigned) NO_POLL_TIMEOUT_S);
-    this->anomalies_++;
-    this->push_event_(EventT{0, EV_ANOMALY, AN_OWN_POLL_TIMEOUT, 0, 0, 0});
+    this->on_anomaly(0, AN_OWN_POLL_TIMEOUT);
     this->last_own_poll_ms_ = now;  // re-arm
   }
 
@@ -893,10 +841,10 @@ void NibeBus::loop() {
     const auto bs = this->bus_ != nullptr ? this->bus_->stats() : rs485_bus::BusStats{};
     {
       // stack copies: the summary log hit an xtensa GCC ICE with 11 direct volatile args
-      const unsigned f_ok = this->frames_ok_, f_bad = this->frames_bad_, p_own = this->polls_own_,
+      const unsigned f_ok = this->parser_.frames_ok(), f_bad = this->parser_.frames_bad(), p_own = this->polls_own_,
                      p_other = this->polls_other_, txs = this->tx_sent_, txr = this->tx_refused_,
                      rdrop = this->reply_drops_, ech = this->echo_filtered_, anom = this->anomalies_,
-                     evov = this->ev_overflow_;
+                     evov = this->wire_overflow_;
       ESP_LOGI(TAG, "bus: frames ok=%u bad=%u polls_own=%u other=%u tx=%u txref=%u replydrop=%u gaps=%u echoes=%u anomalies=%u ev_drop=%u",
                f_ok, f_bad, p_own, p_other, txs, txr, rdrop, (unsigned) bs.gaps, ech, anom, evov);
       // transport health: framing and parity errors are the corruption signals we keep
@@ -908,14 +856,14 @@ void NibeBus::loop() {
     for (const auto &sink : this->counter_sinks_) {
       auto *s = sink.second;
       switch (sink.first) {
-        case 0: s->publish_state(this->frames_ok_); break;
-        case 1: s->publish_state(this->frames_bad_); break;
+        case 0: s->publish_state(this->parser_.frames_ok()); break;
+        case 1: s->publish_state(this->parser_.frames_bad()); break;
         case 2: s->publish_state(this->polls_own_); break;
         case 3: s->publish_state(this->polls_other_); break;
         case 4: s->publish_state(this->tx_sent_); break;
         case 5: s->publish_state(this->anomalies_); break;
         case 6: s->publish_state(this->echo_filtered_); break;
-        case 7: s->publish_state(this->ev_overflow_); break;
+        case 7: s->publish_state(this->wire_overflow_); break;
         case 8: s->publish_state(this->bus_ != nullptr ? this->bus_->stats().par_errs : 0); break;
         case 9: s->publish_state(this->bus_ != nullptr ? this->bus_->stats().frm_errs : 0); break;
       }

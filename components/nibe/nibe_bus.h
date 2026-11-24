@@ -8,6 +8,7 @@
 #include "esphome/core/component.h"
 #include "esphome/core/log.h"
 #include "nibe_frame.h"
+#include "nibe_wire.h"
 
 #ifdef USE_TEXT_SENSOR
 #include "esphome/components/text_sensor/text_sensor.h"
@@ -102,46 +103,15 @@ class NibeButton : public button::Button, public Component {
 };
 #endif
 
-/// Event record produced by the engine (ISR) and consumed by loop().
-struct EventT {
-  uint32_t ts;
-  uint8_t type;      // EventType
-  uint8_t a;         // cmd / control byte / anomaly code / tx byte count
-  uint16_t x;         // polled addr or sender
-  uint8_t len;        // frame data length (as on the wire)
-  uint16_t arena;    // payload offset in the arena (frames)
-  uint8_t flags;     // bit0: the exchange was in OUR slot (polled our address)
-};
-static constexpr uint8_t EVFL_IN_OUR_SLOT = 0x01;
-
-enum EventType : uint8_t {
-  EV_POLL,        // x: polled node address
-  EV_CTRL,        // a: control byte, x: polled addr context (0 when none)
-  EV_FRAME,       // a: cmd, x: sender, len: data length, arena: payload offset
-  EV_FRAME_BAD,   // a: cmd, x: sender, len: declared data length
-  EV_ANOMALY,     // a: Anomaly code
-  EV_GAP,         // x: gap length in µs (silence that closed the previous burst)
-  EV_TX,          // a: first byte sent; b cost 0 (one burst recorded by the bus trace)
-};
-
-enum Anomaly : uint8_t {
-  AN_DESYNC_HUNT,        // checksum failed; hunting for the next ETX/gap boundary
-  AN_FRAME_ABORT,        // declared frame len exceeds capacity; syncing
-  AN_ECHO_FILTERED,      // byte identical to our own reply inside the echo window
-  AN_TX_REFUSED,         // send_burst refused our reply (hard rule: count, never retry)
-  AN_OWN_POLL_TIMEOUT,   // emulator: master stopped polling us (delivery queue dropped)
-  AN_STRAY_CTRL,         // control byte seen at a place it shouldn't be (info)
-};
-
 /// Fixed allocations, all in DRAM (ISR-visible).
-static constexpr size_t EV_RING_N = 256;
-static constexpr size_t ARENA_CAP = 8192;
 static constexpr size_t TX_QUEUE_N = 8;      // pending frames deliverable on our polls
 static constexpr size_t TX_FRAME_MAX = 64;  // engine frame bytes incl. ETX
+static constexpr size_t WIRE_RING_N = 512;   // captured bytes between loop passes
+static constexpr size_t TX_NOTICE_N = 8;     // ISR->task tx-log notifications
 
-/// Nibe legacy-bus engine: exchange state machine, codec dispatch, display-emulator reply scheduler.
-/// Runs on the rs485_bus engine hooks (a raw UART ISR on hardware): the run path must stay ISR-safe.
-/// Everything the human sees is produced from the event ring at loop() level (docs/architecture.md).
+/// Nibe legacy-bus engine: the transport hooks run in the ISR and only capture bytes, track wire
+/// mechanics (poll pair, grant, close, frame boundaries) and emit scheduled replies (ADR-0001).
+/// The frame parser and every decode run in loop(), over the wire ring.
 // ---------------------------------------------------------------------------
 // Wire-measured engine timings — the facts live in docs/protocol.md:
 //   POLL_REPLY_DELAY_US   masters never hear byte-instant replies; 2400 us earns grants
@@ -161,7 +131,7 @@ static constexpr uint8_t ANNOUNCE_BURST = 2;
 static constexpr uint8_t ANNOUNCE_BREATH = 2;
 static constexpr uint32_t NO_POLL_TIMEOUT_S = 30;
 
-class NibeBus : public Component {
+class NibeBus : public Component, public ExchangeSink {
  public:
   void setup() override;
   void loop() override;
@@ -273,11 +243,25 @@ class NibeBus : public Component {
   void gap_(uint32_t ts);
   void tx_done_(uint32_t ts) {}
 
-  void push_event_(const EventT &ev);
-  bool reply_to_poll_(uint32_t ts, uint8_t reply);  // one control byte as our poll reply
-  bool deliver_frame_(uint32_t ts);                  // frame + ETX from the queue head
+  bool IRAM_ATTR reply_to_poll_(uint32_t ts, uint8_t reply);  // one control byte as our poll reply
+  bool IRAM_ATTR deliver_frame_(uint32_t ts);                  // frame + ETX from the queue head
   bool queue_frame_(uint8_t cmd, const uint8_t *data, size_t len);  // task side
-  void process_event_(const EventT &ev);              // task side
+  /// Wire mechanics only (ISR): poll pair, grant, close, frame boundaries — never checksums or meaning.
+  void IRAM_ATTR track_byte_(uint8_t b, uint32_t ts, bool marked);
+  void IRAM_ATTR push_wire_(uint8_t b, uint32_t ts, uint8_t flags);
+  void IRAM_ATTR push_wire_gap_(uint32_t ts);
+  void IRAM_ATTR push_tx_notice_(uint32_t ts, uint8_t kind, uint8_t byte, uint8_t len);
+  /// Task side: drain the wire ring through the parser, and the tx notices into the log.
+  void parse_wire_();
+  void drain_tx_notices_();
+  void tail_(uint32_t ts, char *out, size_t cap);
+  void on_poll(uint32_t ts, uint16_t addr) override;
+  void on_ctrl(uint32_t ts, uint8_t byte, uint16_t ctx) override;
+  void on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t *data, uint8_t len,
+                bool in_our_slot) override;
+  void on_frame_bad(uint32_t ts, uint8_t cmd, uint16_t sender, uint8_t len) override;
+  void on_anomaly(uint32_t ts, uint8_t code) override;
+  void on_gap(uint32_t ts, uint32_t gap_us) override;
 
 #ifdef USE_ESP32
   /// 125 us esp_timer tick (IRAM callback, esp_timer task): paced frame feeding + delayed replies (protocol.md).
@@ -288,28 +272,21 @@ class NibeBus : public Component {
   void emulator_push_ack_tick_();
 
 
-  // byte-level FSM dispatchers (all ISR-safe)
-  void at_boundary_(uint8_t b, uint32_t ts);
-  void at_poll_lo_(uint8_t b, uint32_t ts);
-  void at_ctrl_(uint8_t b, uint32_t ts);
-  void at_chk_(uint8_t b, uint32_t ts);
-  void at_post_frame_(uint8_t b, uint32_t ts);
-  void begin_frame_(uint8_t cmd);
-
-  enum State : uint8_t {
-    S_BOUNDARY,    // exchange boundary: poll-pair candidate, frame start, or stray control
-    S_POLL_HI,     // seen the hi byte of a poll pair
-    S_CTRL,        // response slot of the just-polled node
-    S_F_CMD,
-    S_F_SENDER_HI,
-    S_F_SENDER_LO,
-    S_F_LEN,
-    S_F_DATA,
-    S_F_CHK,
-    S_POST_FRAME,  // frame delivered: expect ETX (possibly preceded by an ACK)
-    S_HUNT,        // desynced: only ETX or a gap re-opens the boundary
+  /// ISR tracker: just enough structure to answer polls and arm grants. The full parse is task-side.
+  enum WireState : uint8_t {
+    WS_BOUNDARY,   // exchange boundary: poll-pair candidate, frame start, or stray control
+    WS_POLL_HI,    // seen the hi byte of a poll pair
+    WS_CTRL,       // response slot of the just-polled node
+    WS_FRAME_HDR,  // skipping sender hi/lo and len
+    WS_FRAME_LEN,  // reading the declared data length
+    WS_FRAME_BODY, // counting data bytes + checksum
+    WS_POST_FRAME, // frame delivered: expect ETX (an ACK may interleave)
+    WS_HUNT,       // desynced: only ETX or a gap re-opens the boundary
   };
-  State st_{S_BOUNDARY};
+  WireState ws_{WS_BOUNDARY};
+  uint8_t ws_poll_hi_{0};
+  uint8_t ws_skip_{0};
+  uint16_t ws_cnt_{0};
 
   bool emulator_intent_{false};  // config intent: this build impersonates the panel
   volatile bool armed_{false};  // staged: only the arm switch (or switchless
@@ -319,25 +296,10 @@ class NibeBus : public Component {
   bool menu_reply_{true};
   int log_level_{1};
 
-  // parser state
-  uint8_t poll_hi_{0};
-  uint16_t polled_addr_{0};
-  uint8_t cmd_{0};
-  uint16_t sender_{0};
-  uint8_t f_len_{0};
-  uint8_t f_idx_{0};
-  uint8_t xor_run_{0};
-  bool chk_rescue_{true};  // one data-extension retry per frame (len-lie fix)
-  volatile uint32_t f_max_gap_us_{0};    // worst body-byte gap of the frame in flight (µs)
-  volatile uint32_t f_gap_report_us_{0}; // last completed frame's worst gap (log)
-
-  uint8_t f_data_[FRAME_MAX_DATA];
-  volatile uint32_t last_byte_ts_{0};
-
-  // Push receipts: armed at frame-complete, fired >= PUSH_ACK_DELAY_US when quiet; wr/rd SPSC (one writer each).
+  // Push receipts: armed by the parser when a valid frame lands in our slot; fired >= PUSH_ACK_DELAY_US when quiet.
   volatile uint32_t push_acks_[4];  // arm timestamps, µs, indexed wr/rd % 4
-  volatile uint8_t push_ack_wr_{0};  // __atomic: UART ISR arms
-  volatile uint8_t push_ack_rd_{0};  // __atomic: loop fires
+  volatile uint8_t push_ack_wr_{0};
+  volatile uint8_t push_ack_rd_{0};
   uint8_t request_byte_{0x88};          // relaid system value in cmd-40 frames
   uint8_t knob_pos_{127};               // panel knob placement (mid/vertical)
   uint8_t register_addr_{0};            // probe target pinned by the register-address number
@@ -349,7 +311,7 @@ class NibeBus : public Component {
   volatile uint8_t reply_ctrl_var_{0};  // RP_CTRL: the byte to transmit
   volatile uint32_t reply_delay_var_{2400};  // the window this reply was armed with
   bool we_own_close_{false};                   // our delivered frame is awaiting its receipt&close
-  uint8_t enq_streak_{0};                      // consecutive ENQ-answered own polls (ISR/loop shared)
+  uint8_t enq_streak_{0};                      // consecutive ENQ-answered own polls
   uint8_t bare_owed_{0};                       // bare-ACK polls remaining in the current breath
   volatile uint32_t reply_drops_{0};  // line spoke inside the turnaround window
 
@@ -372,7 +334,6 @@ class NibeBus : public Component {
   volatile uint8_t tx_log_len_{0};
 
   // own reply bookkeeping (echo discrimination)
-  bool replied_{false};
   uint8_t reply_byte_{0};
   bool slot_ours_{false};   // true while inside an exchange for our address
   bool enq_pending_{false};  // we ENQed; the next master ACK (06) is our grant, even
@@ -393,18 +354,27 @@ class NibeBus : public Component {
   }
   volatile uint32_t txq_head_{0}, txq_tail_{0};
 
-  // event ring + payload arena (ISR produces, loop consumes)
-  EventT events_[EV_RING_N];
-  uint32_t last_ev_ts_{0};  // µs stamp of the event drained before this one
-  volatile uint32_t ev_head_{0}, ev_tail_{0};
-  uint32_t ev_overflow_{0};
-  uint8_t arena_[ARENA_CAP];
-  volatile uint32_t arena_head_{0};
+  // wire ring: captured bytes (ISR produces, loop parses) — replaces the event ring + arena
+  WireRecord wire_[WIRE_RING_N];
+  volatile uint32_t wire_head_{0}, wire_tail_{0};
+  volatile uint32_t wire_overflow_{0};
+
+  // tx notices: ISR emits, loop logs (the wire itself is already recorded by the transport)
+  enum TxNoticeKind : uint8_t { TXN_REPLY = 1, TXN_FRAME, TXN_FEED_DONE, TXN_TX_REFUSED };
+  struct TxNotice {
+    uint32_t ts;
+    uint8_t kind;
+    uint8_t byte;
+    uint8_t len;
+  };
+  TxNotice tx_notices_[TX_NOTICE_N];
+  volatile uint32_t tx_notice_head_{0}, tx_notice_tail_{0};
+
+  ExchangeParser parser_;
 
   // counters
   volatile uint32_t last_own_poll_ms_{0};
   volatile uint32_t polls_own_{0}, polls_other_{0};
-  volatile uint32_t frames_ok_{0}, frames_bad_{0};
   volatile uint32_t echo_filtered_{0}, anomalies_{0}, tx_sent_{0}, tx_refused_{0};
   volatile uint32_t last_gap_us_{0};
 
@@ -413,6 +383,7 @@ class NibeBus : public Component {
   volatile uint8_t rows_seen_{0};    // bit0=row2, bit1=row3, bit2=row4 (from master)
 
   // ---- task side state -------------------------------------------------------
+  uint32_t last_ev_ts_{0};  // µs stamp of the handled event before this one (log tail)
   uint32_t next_summary_ms_{0};
 
 #ifdef USE_TEXT_SENSOR
@@ -426,7 +397,7 @@ class NibeBus : public Component {
   std::vector<std::pair<uint8_t, text_sensor::TextSensor *>> f2025_frame_hex_sinks_{};
 #endif
 #ifdef USE_NIBE_DISPLAY_WEB
-  // ---- display-page state: process_event_ writes, the page builders read — same task context ----
+  // ---- display-page state: the frame handler writes, the page builders read — same task context ----
   uint8_t sym_raw_[3]{};
   uint8_t sym_raw_len_{0};
   char snap_rows_[3][48]{};  // rows 2/3/4 text, latin-1 -> utf-8 handled
