@@ -8,7 +8,45 @@ When an item graduates to fact it moves to
 (commands and registers); when one dies, leave the rejection note here so
 nobody re-imports it.
 
-## 1. The knob event: `[03, placement:u8, 00, 00]` on cmd 0x40 — OWNER RECALL
+## 1. What gates the master's row push — the panel's request rate, or the master's own schedule?
+
+The request *rhythm* the emulator ships (2 ENQ polls, then 2 bare-ACK polls, repeating)
+was invented in this repo. It has no capture behind it, no note in the prior
+../nibemote, and `sim/vvm300_sim.py` both asserts it and documents it, so the sim
+cannot detect its removal. Before that rhythm is designed into anything, we need to
+know whether the master cares.
+
+Device capture of the startup phase (emulator, `log_level: 1`, arm switch on):
+
+- 4 request deliveries `40 67 00 00` (ENQ -> frame -> receipt `06` -> close `03`),
+  in two bursts of 2, `21:31:46.413`..`.578`
+- two bare ACKs at `.445`/`.464` **inside** the request phase — nothing pushed into them
+- bare ACK at `.579`, then the master's `0x51` (row 2) 18 ms later; the same shape
+  repeats for `0x53` (`.593`) and `0x52` (`.651`), each 13-17 ms after a bare ACK
+- the frame/ETX/`03` and receipt-`06` timings match protocol.md exactly
+
+Confirmed by it: the master pushes rows into the panel's own slot (reply byte ->
+master frame -> panel receipt `06` -> master close `03`), and it does so at a moment
+of its own choosing.
+
+- For "our request rate is not the gate": the master had two free bare-ACK slots
+  mid-request-phase and left them unused, then pushed after the 4th request. Its
+  readiness tracked its own schedule, not our slots.
+- For "a specific count/rhythm is required": those 4 requests are the only sample.
+  One sample cannot separate "4 requests are needed" from "the master became ready
+  ~120 ms after hearing us", and cannot say whether a push follows an ENQ reply at
+  all (no capture shows one; `push_after_enq()` in the sim assumes it does).
+- Settle by: vary the announce bound in the task-side scheduler — queue N request
+  frames, then answer bare ACK for a back-off window, N ∈ {1,2,4,8} — and confirm rows
+  `0x51`-`0x53` arrive for every N. One session of continuous requesting (no back-off)
+  also answers whether the master pushes into a slot whose reply was ENQ.
+- Shipped today: `ANNOUNCE_BURST`/`ANNOUNCE_BREATH` (nibe_queries.h) drive the 2/2
+  rhythm from the task-side scheduler; the pump refills to half the queue. If the
+  counters turn out to be unnecessary, the reply byte reduces to "ENQ iff a deliverable
+  frame is queued" and the announce phase becomes pure task-side policy with no
+  governor.
+
+## 2. The knob event: `[03, placement:u8, 00, 00]` on cmd 0x40 — OWNER RECALL
 
 The physical knob (VÄRMEKURVA FÖRSKJUTNING — heating curve offset) is believed
 to ride the same cmd-0x40 event family as the keys, with a knob-specific id
@@ -32,7 +70,7 @@ relayed system value.
   If a capture contradicts, only constants in `nibe_frame.h` /
   `nibe_web.cpp` change.
 
-## 2. cmd-0x40 data[1] = outdoor-temperature-shaped relayed system value
+## 3. cmd-0x40 data[1] = outdoor-temperature-shaped relayed system value
 
 The second data byte of the panel's request AND key frames is not a flag: it
 drifted 0x85 -> 0x88 -> 0x89 across evening captures and 0x67 -> 0x68 the next
@@ -53,7 +91,7 @@ project's spec labeled it a fixed 0x83 flag; that is disproven.
   master most recently sent, if this capture shows the master ever pushes it
   — no evidence yet that it does.
 
-## 3. 0x71 status block, bytes 3-4 = "compressor starts so far"
+## 4. 0x71 status block, bytes 3-4 = "compressor starts so far"
 
 The 16-byte status block is byte-packed; bytes 7-8 (compressor operating
 hours) are display-verified. Bytes 3-4 wander: 40034 -> 40182 over the
@@ -66,7 +104,7 @@ November heat load), while all other block cells held constant across weeks.
   compare with the raw u16 at offset 3 (published as the "compressor starts
   (candidate)" sensor).
 
-## 4. Unmapped F2025 fields
+## 5. Unmapped F2025 fields
 
 - 0x65 words 5 (constant 16384), 6 (large non-thermal blob), 7 (constant
   -32767). Constants suggest flags/scale metadata; w6 could be a bitfield or
@@ -77,7 +115,7 @@ November heat load), while all other block cells held constant across weeks.
   byte-packed — new fields should be probed at BYTE offsets via the generic
   `f2025_register` sensor.
 
-## 5. cmd 0x50 row-1 symbol strip bits
+## 6. cmd 0x50 row-1 symbol strip bits
 
 Row 1 is a 3-byte bitmap of front-panel symbols. The virtual display renders
 it with a heuristic bit table (see `nibe_web.cpp`, derived by correlating
@@ -85,7 +123,7 @@ captures with what the panel shows) — six symbols annotated, none of it
 machine-confirmed. A menu-driven capture session flipping each statescreen
 (heating, hot water, alarm...) would fix the table.
 
-## 6. Node 0x00FA — the boot-scan slot (investigation parked)
+## 7. Node 0x00FA — the boot-scan slot (investigation parked)
 
 00FA was polled 14x in BOTH boot captures and never in steady state — paired
 temporally with the display's first content request. All probing was parked at
@@ -100,7 +138,7 @@ the user's call (2026-11-14), with one question left unanswered:
   watch what the master would have pushed to 00FA, or park this for good —
   the emulator works without it.
 
-## 7. The `05 <reg>` register space (0x72 read / 0x76 write)
+## 8. The `05 <reg>` register space (0x72 read / 0x76 write)
 
 Master reads/writes `05 <reg>` on the display, relay AND F2025 slots with
 different per-node values (0x40/0x41/0x42 on display+relay; 0x11/0x28/0x1F on
@@ -109,26 +147,34 @@ about the register semantics or the panel's values is decoded. A capture
 session changing one VVM300 setting at a time would map registers to menu
 parameters — the clean path to a future parameter-write feature.
 
-## 8. Idle-slot keepalive 0xFF purpose
+Observed on the wire (device, 2026-11-24): the master asks the F2025 `72 05 11`
+and the F2025 answers `72` with a single payload byte `00`. Whether that byte is
+the value, a status, or the first of a longer field is not established — so
+nibemote logs the answer raw and attributes it to the register the master last
+requested for that node, an assumption rather than an established rule. A
+panel-initiated `72 05 <reg>` is still unexercised; the panel-sent 0x32 query
+(item 12) has the same open shape.
+
+## 9. Idle-slot keepalive 0xFF purpose
 
 Shape is verified (empty push, ~11/s in idle, receipt-ACKed like all pushes)
 but the *purpose* is unproven — liveness ping, display-side state poke, or
 frame-budget filler. Harmless to receipt-ACK and ignore.
 
-## 9. Relay board traffic (0x55 / 0x45)
+## 10. Relay board traffic (0x55 / 0x45)
 
 0x55 values evolve (2-byte control/state pairs); 0x45 `01` is one of the only
 two unprompted event types ever observed bus-wide. Untested whether 0x45
 edges correlate with F2025 compressor starts — same-capture correlation with
 the 0x65 hot-gas word would answer it in one pass.
 
-## 10. Accessory slot 0x00F1 traffic (0xA1 etc.)
+## 11. Accessory slot 0x00F1 traffic (0xA1 etc.)
 
 0xA1 one-byte payloads increment like a percentage or step setting, pushed
 ~90x in the steady-state window, never answered. No hypothesis beyond
 "control/status". Correlate against telemetry for a first guess.
 
-## 11. One-shot commands (0x32/0x33/0x35/0x63, 0xC4/0xC5, 0xEE, 0x22, 0xAE/0xAF/0xA3)
+## 12. One-shot commands (0x32/0x33/0x35/0x63, 0xC4/0xC5, 0xEE, 0x22, 0xAE/0xAF/0xA3)
 
 Observed shapes only. 0x22 to the F2025 is verified to be the master's
 boot-time link check *by context* (not content); 0xEE draws an empty query and
@@ -136,18 +182,22 @@ boot-time link check *by context* (not content); 0xEE draws an empty query and
 Passive captures around deliberate state changes (hot water tap, thermostat
 bump) would attribute them.
 
-## 12. REJECTED: the forum 0xC0 parameter map (do not re-import)
+The panel can also *send* 0x32 (empty) as a query — the "Query master state
+(0x32)" button. Only the master->panel direction has been observed, so the
+master's answer, ETX or silence is the experiment; the frame and tx logs show it.
+
+## 13. REJECTED: the forum 0xC0 parameter map (do not re-import)
 
 The Elektronikforumet thread t=13714 ("PC-styrning av Bergvärmepump",
 via ../nibemote) documents cmd-0xC0 parameter blocks with an index map
 (0x0A curve slope, 0x0B curve offset, 0x26 RCU offset...). That map is for a
 **different product line** (360P-era) whose wire format is NOT this VVM300's
 bus: our master never sent 0xC0 to the display in any capture, and the knob's
-believed format here is the cmd-0x40 event family (item 1). The knob number
+believed format here is the cmd-0x40 event family (item 2). The knob number
 was briefly implemented as an 0xC0/0x0B write and reverted (commit 4ba0591).
 If a capture ever shows a real 0xC0 exchange, treat it as NEW evidence.
 
-## 13. The panel clock's +4.9 h offset (cause)
+## 14. The panel clock's +4.9 h offset (cause)
 
 Verified fact: the panel's clock ran +4.9 h ahead of local on two consecutive
 days (02:22 vs 21:27 real; 01:12 vs 20:17 real). The likely cause is simply an
@@ -155,16 +205,16 @@ uninitialized/stale RTC never synced by its owner — the machine predates the
 emulator. No test worth running; with `d4_reply` enabled the esp provides the
 clock instead.
 
-## 14. The wire char carries a 9th bit (address-marked, MDB style) — CONFIRMED
+## 15. The wire char carries a 9th bit (address-marked, MDB style) — CONFIRMED
 
 Origin: the Nibe 1130 uses a hardware 9-bit UART at 19200 (MatsJo/
 nibe-analytics sketch); the Nibe 360P doc (MackanT/NibeVVP, same forum thread
-as item 12) describes exactly this scheme with MARK/SPACE parity and node
+as item 13) describes exactly this scheme with MARK/SPACE parity and node
 addresses whose low bytes match our bus (F5 relay, F2025 display).
 
 CONFIRMED on the VVM300/F2025 wire by the 8E1-slot probe (historically a
-sniffer switch; since the 8-bit paths were dropped the slot is permanent
-line format and the census always counts): per byte,
+sniffer switch; the slot is now a permanent line-format fact, so the probe
+census was deleted — docs/adr/0004): per byte,
 bit9 = parity-error XOR data parity. Census over two windows, live traffic:
 
 | byte class                    | 9th slot | count   |

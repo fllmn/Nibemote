@@ -31,6 +31,7 @@ value.
 | 0x62 | panel -> master | `0F` | menu session reply |
 | 0x63 | master -> panel | `0F` | menu follow-through, unknown |
 | 0x32 / 0x33 / 0x35 | master -> panel | empty / `00` | one-shot menu/state, unknown |
+| 0x32 | panel -> master | empty | sent as a query by the panel (master response not observed) |
 | 0x72 / 0x76 | both | `05 <reg>` / `05 <reg> <val>` | register read / write |
 | 0xD4 | master -> panel | empty | clock query (7-byte BCD answer) |
 
@@ -93,5 +94,6 @@ register numbers across nodes with node-specific values. Power-up writes
 to the F2025 arrive as 0x76 len-3 bursts.
 
 The emulator can queue a read (register-address number + read-register
-button; whether the master answers a panel-initiated 0x72 is the open
-question, hypotheses.md item 7).
+button). Observed answer shape: master `72 05 11`, F2025 `72 00` — one payload
+byte; nibemote logs the answer raw and attributes it to the last request for that
+node (an assumption). The answer body is not decoded (hypotheses.md 8).

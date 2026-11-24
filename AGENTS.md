@@ -17,4 +17,5 @@
   their evidence and how to settle them. Keep hypotheses OUT of protocol.md/commands.md; the prior
   ../nibemote repo must be cited as evidence, not trusted as code.
 - ISR path rules (rs485_bus): IRAM_ATTR code only, no virtual dispatch, DRAM data only, no logging,
-  no allocation. Everything else happens at loop/task level via event rings.
+  no allocation. Everything else happens at loop/task level via the wire ring and the task-side units
+  (ADR-0001); `make gate` audits that no ISR-reachable symbol leaves IRAM.

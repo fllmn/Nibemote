@@ -28,6 +28,7 @@ grant                : master 06, answering a node's ENQ
 data frame           : <cmd> <sender_hi> <sender_lo> <len> <data...> <csum>
 csum                 : XOR-8 over cmd .. last data byte
 receipt ACK          : 06 from the receiver, after a frame's checksum
+NAK                  : 15 from the master, for a frame it sliced but whose checksum failed
 close                : 03 ETX, written by the frame's sender
 ```
 
@@ -49,18 +50,20 @@ is bus powered.
 - The master's listener opens ~1-2.5 ms after its own bytes leave the
   wire; timed replies land in that window (panel poll answers at +0.8-2.4
   ms; granted frames start ~+160 µs after the grant).
-- Frames with a failing checksum are ignored in silence.
+- The master answers a frame it could slice but whose checksum failed with NAK
+  `15`; a frame whose bytes cannot be sliced gets no answer. ETX `03` in place
+  of an answer means the command was not understood.
 - Poll cadence: an active display slot ~9.2 ms (~28/s); a silent slot
   ~520 ms.
 - Reply timing constants live in `components/nibe/nibe_bus.h`.
 
 ## The display slot
 
-1. Power-up: the panel answers polls with ENQ carrying the content
-   REQUEST `40 <relay> 00 00`, repeated until the master delivers content,
-   in a rhythm of 2 request polls then 2 bare-ACK polls. The master pushes
-   content into bare-ACK slots.
-2. Menu session: the master sends 0x62 (empty); the panel replies `0F`.
+1. Power-up: the panel answers its polls with ENQ carrying the content
+   REQUEST `40 <relay> 00 00`, repeated until the master delivers the first
+   content row. The master then pushes the rows into that same slot: panel
+   reply byte, master frame, panel receipt `06`, master close `03`.
+2. Menu session: the master sends 0x62 (empty); the panel answers `0F`.
 3. Content: 0x50 = row 1 symbol strip, 0x51/0x52/0x53 = rows 2-4 (latin-1
    text, NUL padded, 0xB0 = °), repainted every ~5.5 s. The request phase
    ends at the first content row.
