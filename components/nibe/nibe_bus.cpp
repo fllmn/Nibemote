@@ -535,6 +535,7 @@ void NibeBus::drain_tx_notices_() {
 }
 
 void NibeBus::on_poll(uint32_t ts, uint16_t addr) {
+  this->last_reg_query_valid_ = false;  // a new exchange opens: any pending register answer is gone
   char tail[28];
   this->tail_(ts, tail, sizeof(tail));
   if (addr != this->my_addr_) {
@@ -603,6 +604,7 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
   char tail[28];
   this->tail_(ts, tail, sizeof(tail));
   const uint8_t n = len > FRAME_MAX_DATA ? (uint8_t) FRAME_MAX_DATA : len;
+  const FrameView view{cmd, sender, payload, n};
   char hexbuf[3 * FRAME_MAX_DATA + 1];
   hexbuf[0] = 0;
   hex_(hexbuf, sizeof(hexbuf), payload, n);
@@ -656,22 +658,24 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
   if (sender == ADDR_F2025 && cmd == CMD_SENSOR) {
 #ifdef USE_TEXT_SENSOR
     for (const auto &sink : this->f2025_word_hex_sinks_) {
-      size_t need = ((size_t) sink.first + 1) * 2;
-      if ((size_t) n >= need) {
-        uint16_t raw = (uint16_t) payload[2 * sink.first] | ((uint16_t) payload[2 * sink.first + 1] << 8);
+      int16_t raw = 0;
+      if (f2025_word(view, sink.first, &raw)) {
         char hex[8];
-        snprintf(hex, sizeof(hex), "0x%04X", (unsigned) raw);
+        snprintf(hex, sizeof(hex), "0x%04X", (unsigned) (uint16_t) raw);
         sink.second->publish_state(hex);
       }
     }
 #endif
-    if (this->log_level_ >= 1)
-      ESP_LOGD(TAG, "F2025 sensor block (word0..4: %.1f %.1f %.1f %.1f %.1f)",
-               n >= 2 ? ((int16_t)(payload[0] | (payload[1] << 8))) / 10.0f : 0.0f,
-               n >= 4 ? ((int16_t)(payload[2] | (payload[3] << 8))) / 10.0f : 0.0f,
-               n >= 6 ? ((int16_t)(payload[4] | (payload[5] << 8))) / 10.0f : 0.0f,
-               n >= 8 ? ((int16_t)(payload[6] | (payload[7] << 8))) / 10.0f : 0.0f,
-               n >= 10 ? ((int16_t)(payload[8] | (payload[9] << 8))) / 10.0f : 0.0f);
+    if (this->log_level_ >= 1) {
+      float celsius[5] = {};
+      for (uint8_t i = 0; i < 5; i++) {
+        int16_t raw = 0;
+        if (f2025_word(view, i, &raw))
+          celsius[i] = celsius_from_tenths(raw);
+      }
+      ESP_LOGD(TAG, "F2025 sensor block (word0..4: %.1f %.1f %.1f %.1f %.1f)", celsius[0], celsius[1],
+               celsius[2], celsius[3], celsius[4]);
+    }
   }
 
 #ifdef USE_SENSOR
@@ -680,12 +684,9 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
     for (const auto &sink : this->f2025_reg_sinks_) {
       if (sink.first.cmd != cmd)
         continue;
-      size_t need = (size_t) sink.first.offset + 2;
-      if ((size_t) n >= need) {
-        uint16_t raw = (uint16_t) payload[sink.first.offset] | ((uint16_t) payload[sink.first.offset + 1] << 8);
-        float value = sink.first.is_signed ? (float) (int16_t) raw : (float) raw;
-        sink.second->publish_state(value * sink.first.scale);
-      }
+      float value = 0;
+      if (f2025_register(view, sink.first.offset, sink.first.is_signed, sink.first.scale, &value))
+        sink.second->publish_state(value);
     }
   }
 #endif
@@ -698,6 +699,19 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
         sink.second->publish_state(hexbuf);
   }
 #endif
+
+  // passive register pairing: the master's 0x72 request names the register; a 0x72 from another
+  // node before the next poll is its answer. The value grammar is still open, so log the raw bytes.
+  if (cmd == CMD_REG_READ) {
+    uint8_t reg = 0;
+    if (sender == ADDR_VVM300 && parse_register_request(view, &reg)) {
+      this->last_reg_query_ = reg;
+      this->last_reg_query_valid_ = true;
+    } else if (sender != ADDR_VVM300 && this->last_reg_query_valid_) {
+      ESP_LOGI(TAG, "register 0x%02X answer: %s", this->last_reg_query_, hexbuf);
+      this->last_reg_query_valid_ = false;  // one answer per request
+    }
+  }
 
   // -- our address emitting = panel traffic (physical panel, or our own frames echoed) --
   // key frames: data[0] discriminates; data[1] is the relayed system value (commands.md)
@@ -732,11 +746,10 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
     if (!t.is_valid()) {
       ESP_LOGW(TAG, "master 0xD4 clock query: our clock is not synced/valid — not answering");
     } else {
-      uint8_t (*bcd)(uint8_t) = [](uint8_t v) -> uint8_t { return (uint8_t) (((v / 10) << 4) | (v % 10)); };
-      // tail = day-of-week, Sunday=1 (protocol.md); d4_tail overrides, 0 = auto
       uint8_t d4_tail = this->d4_tail_ != 0 ? this->d4_tail_ : t.day_of_week;
-      uint8_t data[7] = {bcd((uint8_t) (t.year % 100)), bcd((uint8_t) t.month), bcd((uint8_t) t.day_of_month),
-                         bcd((uint8_t) t.hour), bcd((uint8_t) t.minute), bcd((uint8_t) t.second), d4_tail};
+      uint8_t data[7];
+      encode_d4_clock(t.year, (uint8_t) t.month, (uint8_t) t.day_of_month, (uint8_t) t.hour,
+                      (uint8_t) t.minute, (uint8_t) t.second, d4_tail, data);
       ESP_LOGI(TAG, "master 0xD4 clock query: queueing %02X %02X %02X %02X %02X %02X %02X "
                     "(%04u-%02u-%02u %02u:%02u:%02u)",
                data[0], data[1], data[2], data[3], data[4], data[5], data[6], (unsigned) t.year, (unsigned) t.month,
