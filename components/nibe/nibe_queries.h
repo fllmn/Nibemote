@@ -12,39 +12,32 @@ namespace esphome::nibe {
 static constexpr uint8_t ANNOUNCE_BURST = 2;
 static constexpr uint8_t ANNOUNCE_BREATH = 2;
 
-/// Task-side frame producer: the engine's outbound queue.
-class TxSink {
- public:
-  virtual ~TxSink() = default;
-  /// repeatable: a request the engine may expire (first content row) and the scheduler re-adds later.
-  virtual bool send(uint8_t cmd, const uint8_t *data, size_t len, bool repeatable) = 0;
-};
+/// A frame's repeat rule, as the query that enqueues it declares it.
+enum class Repeat : uint8_t { NO, YES };
 
-/// What a query may know about the panel while deciding whether to speak.
-class QueryState {
+/// What a query may know about the engine: send a frame, read the state it decides on.
+/// One context, not three — NibeBus is the only implementer and passes itself once (ADR-0003).
+class QueryContext {
  public:
-  virtual ~QueryState() = default;
+  virtual ~QueryContext() = default;
+  virtual bool send(uint8_t cmd, const uint8_t *data, size_t len, Repeat repeat) = 0;
   /// the master delivered the first content row, so the request phase is over
   virtual bool content_complete() = 0;
-};
-
-/// What the scheduler may know about the outbound queue (the bytes stay the engine's).
-class QueueState {
- public:
-  virtual ~QueueState() = default;
-  virtual bool empty() = 0;
-  virtual bool has_real() = 0;  // a once-off frame (key, menu reply, clock) is waiting
-  virtual uint32_t used() = 0;
+  virtual bool queue_empty() = 0;
+  virtual bool queue_has_once() = 0;  // a once-off frame (key, menu reply, clock) is waiting
+  virtual uint32_t queue_used() = 0;
+  /// the relayed system value in cmd-0x40 frames (commands.md)
+  virtual uint8_t request_byte() const = 0;
 };
 
 /// One outbound command: the frame it builds, when it repeats, what it means.
-/// Task context only (ADR-0003); adding a command means adding one unit and one registration line.
+/// Task context only; adding a command means adding one unit and one registration line.
 class Query {
  public:
   virtual ~Query() = default;
   virtual const char *name() const = 0;
   /// Offer one frame; false when this query has nothing to say right now.
-  virtual bool pump(TxSink &tx, QueryState &state) { return false; }
+  virtual bool pump(QueryContext &ctx) { return false; }
 };
 
 /// Content request `40 <relay> 00 00`, repeated until the master delivers the first content row.
@@ -54,11 +47,9 @@ class ContentRequestQuery : public Query {
   void arm() { this->active_ = true; }
   void disarm() { this->active_ = false; }
   bool active() const { return this->active_; }
-  void set_request_byte(uint8_t b) { this->request_byte_ = b; }
-  bool pump(TxSink &tx, QueryState &state) override;
+  bool pump(QueryContext &ctx) override;
 
  private:
-  uint8_t request_byte_{0x88};
   bool active_{false};
 };
 
@@ -66,14 +57,14 @@ class ContentRequestQuery : public Query {
 class KeyQuery : public Query {
  public:
   const char *name() const override { return "key"; }
-  bool press(TxSink &tx, uint8_t key, uint8_t value);
+  bool press(QueryContext &ctx, uint8_t key, uint8_t value);
 };
 
 /// Register read: cmd 0x72, data `05 <reg>` — one shot.
 class RegisterQuery : public Query {
  public:
   const char *name() const override { return "register-read"; }
-  bool read(TxSink &tx, uint8_t reg);
+  bool read(QueryContext &ctx, uint8_t reg);
 };
 
 /// Repeat scheduling and the poll-reply policy: ENQ iff something is deliverable,
@@ -87,13 +78,16 @@ class QueryScheduler {
   /// How many entries refill tops the queue up to (the engine sets half its capacity).
   void set_fill_target(uint32_t n) { this->fill_target_ = n; }
   /// Top up repeatable frames (loop rate).
-  void refill(TxSink &tx, QueryState &state, QueueState &queue);
+  void refill(QueryContext &ctx);
   /// The reply byte for a poll to our slot, after topping up.
-  uint8_t poll_reply(TxSink &tx, QueryState &state, QueueState &queue);
+  uint8_t poll_reply(QueryContext &ctx);
   void reset_governor() {
     this->enq_streak_ = 0;
     this->bare_owed_ = 0;
   }
+  /// The registered command surface, for dump_config.
+  size_t count() const { return this->count_; }
+  Query *at(size_t i) const { return i < this->count_ ? this->queries_[i] : nullptr; }
 
  private:
   static constexpr size_t MAX_QUERIES = 8;

@@ -130,7 +130,7 @@ static constexpr uint32_t FRAME_CLOSE_DELAY_US = 670;
 static constexpr uint32_t PUSH_ACK_DELAY_US = 15400;
 static constexpr uint32_t NO_POLL_TIMEOUT_S = 30;
 
-class NibeBus : public Component, public ExchangeSink, public TxSink, public QueryState, public QueueState {
+class NibeBus : public Component, public ExchangeSink, public QueryContext {
  public:
   void setup() override;
   void loop() override;
@@ -144,10 +144,7 @@ class NibeBus : public Component, public ExchangeSink, public TxSink, public Que
     return this->emulator_intent_ && this->armed_ && this->transmit_capable_();
   }
   /// cmd-0x40 data[1] in request AND key frames: a relaid system value, no protocol meaning (commands.md).
-  void set_request_byte(uint8_t b) {
-    this->request_byte_ = b;
-    this->content_query_.set_request_byte(b);
-  }
+  void set_request_byte(uint8_t b) { this->request_byte_ = b; }
   void set_address(uint16_t address) {
     this->my_addr_ = address;
     this->parser_.set_address(address);
@@ -221,8 +218,8 @@ class NibeBus : public Component, public ExchangeSink, public TxSink, public Que
   void set_register_address(uint8_t r) { this->register_addr_ = r; }
   /// Queue a register read — cmd 0x72, data `05 <reg>`, delivered on our next granted poll (emulator only).
   bool queue_register_read();
-  /// Refill the announce queue while a pump window is active (protocol.md "The display slot").
-  void pump_announces_();  // refill announces while window open
+  /// Refill the repeatable queue while the request phase is live.
+  void refill_queries_();
   /// Re-announce: clears the rows latch and re-arms the request pump (arm switch or Re-announce button).
   bool trigger_announce();
 
@@ -240,14 +237,15 @@ class NibeBus : public Component, public ExchangeSink, public TxSink, public Que
   /// the transport may drive the line (config `active: true`, resolved in the transport's setup)
   bool IRAM_ATTR transmit_capable_() const { return this->bus_ != nullptr && this->bus_->bus_active(); }
 
-  // ---- queries (task side): TxSink, QueryState, QueueState --------------------
-  bool send(uint8_t cmd, const uint8_t *data, size_t len, bool repeatable) override;
+  // ---- queries (task side): the engine as a QueryContext ----------------------
+  bool send(uint8_t cmd, const uint8_t *data, size_t len, Repeat repeat) override;
   bool content_complete() override { return this->rows_seen_ != 0; }
-  bool empty() override;
-  bool has_real() override;
-  uint32_t used() override;
+  bool queue_empty() override;
+  bool queue_has_once() override;
+  uint32_t queue_used() override;
+  uint8_t request_byte() const override { return this->request_byte_; }
   /// queue tail after skipping expired repeatables (the peek the poll policy uses)
-  uint32_t effective_tail_();
+  uint32_t live_tail_();
 
   // ---- engine (ISR-safe) side ----------------------------------------------
   static void IRAM_ATTR rx_byte_trampoline_(void *ctx, uint8_t byte, uint32_t ts, uint8_t flags) {
@@ -262,7 +260,6 @@ class NibeBus : public Component, public ExchangeSink, public TxSink, public Que
 
   bool IRAM_ATTR reply_to_poll_(uint32_t ts, uint8_t reply);  // one control byte as our poll reply
   bool IRAM_ATTR deliver_frame_(uint32_t ts);                  // frame + ETX from the queue head
-  bool queue_frame_(uint8_t cmd, const uint8_t *data, size_t len, bool repeatable);  // task side
   /// Wire mechanics only (ISR): poll pair, grant, close, frame boundaries — never checksums or meaning.
   void IRAM_ATTR track_byte_(uint8_t b, uint32_t ts, bool marked);
   void IRAM_ATTR push_wire_(uint8_t b, uint32_t ts, uint8_t flags);

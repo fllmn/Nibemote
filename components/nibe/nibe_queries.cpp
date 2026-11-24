@@ -2,46 +2,46 @@
 
 namespace esphome::nibe {
 
-bool ContentRequestQuery::pump(TxSink &tx, QueryState &state) {
-  if (!this->active_ || state.content_complete())
+bool ContentRequestQuery::pump(QueryContext &ctx) {
+  if (!this->active_ || ctx.content_complete())
     return false;
-  uint8_t data[4] = {0x40, this->request_byte_, 0x00, 0x00};  // data[0] = content-request id (commands.md)
-  return tx.send(CMD_ANNOUNCE, data, sizeof(data), true /*repeatable*/);
+  uint8_t data[4] = {0x40, ctx.request_byte(), 0x00, 0x00};  // data[0] = content-request id (commands.md)
+  return ctx.send(CMD_ANNOUNCE, data, sizeof(data), Repeat::YES);
 }
 
-bool KeyQuery::press(TxSink &tx, uint8_t key, uint8_t value) {
+bool KeyQuery::press(QueryContext &ctx, uint8_t key, uint8_t value) {
   uint8_t data[4] = {key, value, 0, 0};  // data[1]: relaid system value / knob placement (commands.md)
-  return tx.send(CMD_KEY, data, sizeof(data), false);
+  return ctx.send(CMD_KEY, data, sizeof(data), Repeat::NO);
 }
 
-bool RegisterQuery::read(TxSink &tx, uint8_t reg) {
+bool RegisterQuery::read(QueryContext &ctx, uint8_t reg) {
   uint8_t data[2] = {REG_PREFIX, reg};
-  return tx.send(CMD_REG_READ, data, sizeof(data), false);
+  return ctx.send(CMD_REG_READ, data, sizeof(data), Repeat::NO);
 }
 
-void QueryScheduler::refill(TxSink &tx, QueryState &state, QueueState &queue) {
-  if (queue.has_real())
+void QueryScheduler::refill(QueryContext &ctx) {
+  if (ctx.queue_has_once())
     return;  // a real answer goes first — requests pause while it is queued
   for (;;) {
-    if (queue.used() >= this->fill_target_)
+    if (ctx.queue_used() >= this->fill_target_)
       return;  // fill to half: slots stay free for keys and replies
     bool queued = false;
     for (size_t i = 0; i < this->count_; i++)
-      if (this->queries_[i]->pump(tx, state))
+      if (this->queries_[i]->pump(ctx))
         queued = true;
     if (!queued)
       return;
   }
 }
 
-uint8_t QueryScheduler::poll_reply(TxSink &tx, QueryState &state, QueueState &queue) {
-  this->refill(tx, state, queue);
-  if (queue.empty()) {
+uint8_t QueryScheduler::poll_reply(QueryContext &ctx) {
+  this->refill(ctx);
+  if (ctx.queue_empty()) {
     this->enq_streak_ = 0;
     this->bare_owed_ = 0;
     return CTRL_ACK;  // nothing deliverable
   }
-  if (queue.has_real()) {
+  if (ctx.queue_has_once()) {
     this->enq_streak_ = 0;
     this->bare_owed_ = 0;
     return CTRL_ENQ;  // real answers are never throttled (don't starve)
