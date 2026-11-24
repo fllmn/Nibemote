@@ -351,6 +351,7 @@ void NibeBus::setup() {
   this->scheduler_.add(&this->content_query_);
   this->scheduler_.add(&this->key_query_);
   this->scheduler_.add(&this->register_query_);
+  this->scheduler_.add(&this->menu_state_query_);
   ESP_LOGCONFIG(TAG, "NibeBus: %s role, address %04X", this->role_name(), this->my_addr_);
 #ifdef USE_ESP32
   if (!this->emulator_intent_ || !this->transmit_capable_())
@@ -443,6 +444,15 @@ bool NibeBus::queue_register_read() {
   }
   ESP_LOGI(TAG, "queueing register read 0x72: 05 %02X (answer lands in the frame log)", this->register_addr_);
   return this->register_query_.read(*this, this->register_addr_);
+}
+
+bool NibeBus::queue_state_query() {
+  if (!this->emulating()) {
+    ESP_LOGW(TAG, "role is %s: state query 0x32 not queued (refuses to transmit)", this->role_name());
+    return false;
+  }
+  ESP_LOGI(TAG, "queueing 0x32 state query (experiment: answer, ETX or silence?)");
+  return this->menu_state_query_.ask(*this);
 }
 
 bool NibeBus::trigger_announce() {
@@ -902,7 +912,9 @@ void NibeSwitch::write_state(bool state) {
 
 #ifdef USE_BUTTON
 void NibeButton::press_action() {
-  if (this->read_register_) {
+  if (this->state_query_) {
+    this->hub_->queue_state_query();
+  } else if (this->read_register_) {
     this->hub_->queue_register_read();  // target pinned by the register-address number
   } else if (this->announce_) {
     this->hub_->trigger_announce();

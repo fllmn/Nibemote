@@ -93,6 +93,7 @@ class NibeButton : public button::Button, public Component {
   }
   void set_announce() { this->announce_ = true; }
   void set_read_register() { this->read_register_ = true; }
+  void set_state_query() { this->state_query_ = true; }
 
  protected:
   void press_action() override;
@@ -100,6 +101,7 @@ class NibeButton : public button::Button, public Component {
   uint8_t key_{0};
   bool announce_{false};
   bool read_register_{false};
+  bool state_query_{false};
   NibeBus *hub_{nullptr};
 };
 #endif
@@ -218,6 +220,8 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   void set_register_address(uint8_t r) { this->register_addr_ = r; }
   /// Queue a register read — cmd 0x72, data `05 <reg>`, delivered on our next granted poll (emulator only).
   bool queue_register_read();
+  /// Queue the 0x32 menu/state query, empty payload (emulator only; the outcome is the experiment).
+  bool queue_state_query();
   /// Refill the repeatable queue while the request phase is live.
   void refill_queries_();
   /// Re-announce: clears the rows latch and re-arms the request pump (arm switch or Re-announce button).
@@ -387,6 +391,7 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   ContentRequestQuery content_query_;
   KeyQuery key_query_;
   RegisterQuery register_query_;
+  MenuStateQuery menu_state_query_;
   QueryScheduler scheduler_;
 
   // counters

@@ -19,6 +19,10 @@ bool RegisterQuery::read(QueryContext &ctx, uint8_t reg) {
   return ctx.send(CMD_REG_READ, data, sizeof(data), Repeat::NO);
 }
 
+bool MenuStateQuery::ask(QueryContext &ctx) {
+  return ctx.send(CMD_STATE_QUERY, nullptr, 0, Repeat::NO);
+}
+
 void QueryScheduler::refill(QueryContext &ctx) {
   if (ctx.queue_has_once())
     return;  // a real answer goes first — requests pause while it is queued

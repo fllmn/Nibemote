@@ -67,6 +67,14 @@ class RegisterQuery : public Query {
   bool read(QueryContext &ctx, uint8_t reg);
 };
 
+/// Menu/state query 0x32, empty payload — one shot. An experiment: on the wire it has only
+/// been seen master->panel, so the master's answer/ETX/silence is the result (commands.md).
+class MenuStateQuery : public Query {
+ public:
+  const char *name() const override { return "menu-state-0x32"; }
+  bool ask(QueryContext &ctx);
+};
+
 /// Repeat scheduling and the poll-reply policy: ENQ iff something is deliverable,
 /// else a burst/breath governor so the master gets bare slots to push content into.
 class QueryScheduler {

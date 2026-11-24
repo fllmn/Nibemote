@@ -54,6 +54,9 @@ static constexpr uint8_t CMD_PARAM = 0xC0;
 static constexpr uint8_t CMD_REG_READ = 0x72;
 static constexpr uint8_t REG_PREFIX = 0x05;
 
+// one-shot menu/state query, seen master->panel only; the panel can send it as an experiment
+static constexpr uint8_t CMD_STATE_QUERY = 0x32;
+
 /// Wire facts shared by the ISR tracker and the task parser — one spelling, so the two cannot drift.
 /// IRAM_ATTR: both callers on the ISR side need these in DRAM code (OTA writes disable the flash cache).
 static inline IRAM_ATTR bool is_poll_hi(uint8_t b) { return b == 0x00 || b == 0x41; }
