@@ -132,6 +132,12 @@ restores the stock system (verified by the prior project). Then compare the
 sniffer captures of the failure window (the firmware logs every anomaly), and
 remember the rule: **silence is safe, unauthorized bytes are not.**
 
+**If the VVM300 boots with no display answering its polls** (emulator disarmed,
+or the ESP off the bus), it sits on the `NIBE AB / VVM 300 / v.1.25` boot splash
+and looks dead while the bus shows only polls. Arm the emulator — or fit the
+physical display — and it finishes startup, runs the register sweep and paints
+live rows. Nothing is wrong with the unit; it is waiting for a panel.
+
 ## Known things nobody should do
 
 - Don't enable `role: emulator` while the physical display is attached (two devices
