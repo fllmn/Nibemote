@@ -3,7 +3,7 @@
 namespace esphome::nibe {
 
 void ScreenState::set_row(uint8_t row, const char *utf8) {
-  if (row < 2 || row > 1 + ROWS)
+  if (!valid_row_(row))
     return;
   char *dst = this->rows_[row - 2];
   size_t i = 0;
@@ -20,7 +20,7 @@ void ScreenState::set_symbols(const uint8_t *raw, uint8_t len) {
 }
 
 const char *ScreenState::row(uint8_t row) const {
-  if (row < 2 || row > 1 + ROWS)
+  if (!valid_row_(row))
     return "";
   return this->rows_[row - 2];
 }

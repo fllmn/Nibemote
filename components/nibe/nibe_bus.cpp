@@ -459,7 +459,7 @@ bool NibeBus::trigger_announce() {
   if (!this->emulating())
     return false;
   // fresh request cycle after re-arm: the repeat pump re-runs until the first content row
-  this->screen_.reset_rows();
+  this->screen_.clear_seen();
   this->content_query_.arm();
   this->scheduler_.reset_governor();
   this->refill_queries_();
@@ -642,7 +642,7 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
         if (sink.row == row)
           sink.sensor->publish_state(this->screen_.row(row));
 #endif
-    } else {  // row 1: binary symbol strip (undocumented bits; publish raw hex for now)
+    } else {  // row 1: the frame carries more than the 3-byte strip — publish the raw frame for decoding
       this->screen_.set_symbols(payload, n);
 #ifdef USE_TEXT_SENSOR
       for (const auto &sink : this->row_sinks_)
@@ -867,8 +867,8 @@ void NibeBus::dump_config() {
   ESP_LOGCONFIG(TAG, "NibeBus:");
   ESP_LOGCONFIG(TAG, "  role: %s, address: %04X", this->role_name(), this->my_addr_);
   ESP_LOGCONFIG(TAG, "  rows 2/3/4 seen: %d/%d/%d, request pump: %s, menu_reply: %s",
-                (this->screen_.seen() & 1) ? 1 : 0, (this->screen_.seen() & 2) ? 1 : 0,
-                (this->screen_.seen() & 4) ? 1 : 0, this->content_query_.active() ? "ON" : "OFF",
+                this->screen_.seen(2) ? 1 : 0, this->screen_.seen(3) ? 1 : 0,
+                this->screen_.seen(4) ? 1 : 0, this->content_query_.active() ? "ON" : "OFF",
                 this->menu_reply_ ? "ON" : "OFF");
   if (this->bus_ != nullptr)
     ESP_LOGCONFIG(TAG, "  9-bit line: TX marks ENQ 1 / data 0; RX carries the slot as a per-byte fact");

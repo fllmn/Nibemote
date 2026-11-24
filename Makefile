@@ -36,14 +36,16 @@ iram-audit: ## fail if an ISR-path symbol sits in flash (after a device build)
 	@$(PY) tools/iram_audit.py configs/.esphome/build/nibemote/build/firmware.elf
 
 sim: env ## run the host build against sim/vvm300_sim.py (all checks must pass)
-	@$(ESPHOME) run configs/nibemote-host.yaml > /tmp/nibemote-host-run.log 2>&1 & \
-	  host=$$!; trap 'kill $$host 2>/dev/null' EXIT; \
+	@pat='[c]onfigs/.esphome/build/nibemote-host/.pioenvs/nibemote-host/program'; \
+	  pkill -f "$$pat" 2>/dev/null || true; \
+	  $(ESPHOME) run configs/nibemote-host.yaml > /tmp/nibemote-host-run.log 2>&1 & \
+	  host=$$!; trap 'kill $$host 2>/dev/null; pkill -f "$$pat" 2>/dev/null' EXIT; \
 	  ok=0; for i in $$(seq 1 60); do \
 	    $(PY) -c "import socket; socket.create_connection(('127.0.0.1', 6638), 0.25).close()" \
 	      2>/dev/null && { ok=1; break; }; sleep 1; \
 	  done; \
 	  if [ $$ok -ne 1 ]; then echo "host firmware never opened tcp_uart 6638 (see /tmp/nibemote-host-run.log)" >&2; exit 1; fi; \
-	  $(PY) sim/vvm300_sim.py; rc=$$?; kill $$host 2>/dev/null; exit $$rc
+	  $(PY) sim/vvm300_sim.py; rc=$$?; kill $$host 2>/dev/null; pkill -f "$$pat" 2>/dev/null; exit $$rc
 
 gate: validate compile iram-audit sim ## pre-commit gate (AGENTS.md: validate + compile + IRAM audit + host sim)
 

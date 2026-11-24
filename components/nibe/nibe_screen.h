@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "esphome/core/hal.h"
+#include "nibe_frame.h"
 
 namespace esphome::nibe {
 
@@ -11,9 +12,10 @@ namespace esphome::nibe {
 /// The `seen` bits are volatile because the ISR's request purge reads them; the text is task-only.
 class ScreenState {
  public:
-  static constexpr uint8_t ROWS = 3;        // rows 2..4
-  static constexpr size_t ROW_CAP = 48;     // utf-8 bytes per row, NUL included
-  static constexpr size_t SYM_CAP = 3;      // row-1 symbol strip bytes
+  static constexpr uint8_t ROWS = 3;  // rows 2..4
+  /// latin-1 -> utf-8 doubles each high byte, so a full frame payload fits without truncation
+  static constexpr size_t ROW_CAP = 2 * FRAME_MAX_DATA + 1;
+  static constexpr size_t SYM_CAP = 3;  // row-1 symbol strip bytes
 
   /// Record a master-pushed text row (2..4) and mark it seen.
   void set_row(uint8_t row, const char *utf8);
@@ -23,11 +25,13 @@ class ScreenState {
   /// The first content row has arrived: the request phase is over.
   bool IRAM_ATTR any() const { return this->seen_ != 0; }
   /// All three text rows have arrived.
-  bool IRAM_ATTR complete() const { return (this->seen_ & 0x07) == 0x07; }
-  uint8_t seen() const { return this->seen_; }
-  void reset_rows() { this->seen_ = 0; }
+  bool complete() const { return (this->seen_ & 0x07) == 0x07; }
+  bool seen(uint8_t row) const { return row >= 2 && row <= 1 + ROWS && (this->seen_ & (1u << (row - 2))); }
+  /// Re-announce: forget that content arrived (the text stays until the master repaints).
+  void clear_seen() { this->seen_ = 0; }
 
-  /// "" until that row has been seen.
+  /// The row's text: "" before the master has sent it, and the last text after a re-announce
+  /// (a re-announce only clears the seen bits; the master repaints the rows).
   const char *row(uint8_t row) const;
   uint8_t symbols_len() const { return this->sym_len_; }
   uint8_t symbol(uint8_t i) const { return i < this->sym_len_ ? this->sym_[i] : 0; }
@@ -36,6 +40,8 @@ class ScreenState {
   uint8_t knob() const { return this->knob_; }
 
  private:
+  static bool valid_row_(uint8_t row) { return row >= 2 && row <= 1 + ROWS; }
+
   volatile uint8_t seen_{0};  // bit0=row2, bit1=row3, bit2=row4
   char rows_[ROWS][ROW_CAP]{};
   uint8_t sym_[SYM_CAP]{};

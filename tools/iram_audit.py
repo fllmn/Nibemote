@@ -38,8 +38,7 @@ ISR_SYMBOLS = [
     "esphome::nibe::NibeBus::fire_pending_reply_",
     "esphome::nibe::NibeBus::purge_stale_requests_",
     "esphome::nibe::NibeBus::poll_reply_tick_",
-    "esphome::nibe::NibeBus::tx_is_request_",
-    "esphome::nibe::NibeBus::rows_complete_",
+    "esphome::nibe::ScreenState::any",
     # predicates and capability checks: inlined today, IRAM if ever emitted
     "esphome::nibe::NibeBus::emulating",
     "esphome::nibe::NibeBus::transmit_capable_",

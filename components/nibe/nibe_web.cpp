@@ -90,7 +90,16 @@ static void json_str_(std::string &out, const char *text) {
   out += '"';
 }
 
-// Builds the JSON state snapshot served at /j (polled by the page script).
+// symbol strip as space-separated hex — the JSON and the page share the format
+static void append_symbol_hex_(std::string &out, const ScreenState &s) {
+  char hex[8];
+  for (uint8_t i = 0; i < s.symbols_len(); i++) {
+    snprintf(hex, sizeof(hex), "%s%02X", i ? " " : "", (unsigned) s.symbol(i));
+    out += hex;
+  }
+}
+
+// Builds the JSON screen state served at /j (polled by the page script).
 std::string NibeBus::build_display_json_() {
   std::string row2 = this->screen_.row(2);
   std::string row3 = this->screen_.row(3);
@@ -125,11 +134,7 @@ std::string NibeBus::build_display_json_() {
   out += ",\"c\":";
   json_str_(out, r4r.c_str());
   out += ",\"hx\":\"";
-  char hex[8];
-  for (uint8_t i = 0; i < this->screen_.symbols_len(); i++) {
-    snprintf(hex, sizeof(hex), "%s%02X", i ? " " : "", (unsigned) this->screen_.symbol(i));
-    out += hex;
-  }
+  append_symbol_hex_(out, this->screen_);
   out += "\"";
   char buf[16];
   snprintf(buf, sizeof(buf), ",\"k\":%u}", (unsigned) this->screen_.knob());
@@ -151,9 +156,7 @@ std::string NibeBus::build_display_page_() {
   std::string row4 = this->screen_.row(4);
 
   // symbol strip state (see WEB_BITS for the mapping)
-  auto bit_on = [this](uint8_t byte, uint8_t mask) -> bool {
-    return this->screen_.symbols_len() > byte && (this->screen_.symbol(byte) & mask);
-  };
+  auto bit_on = [this](uint8_t byte, uint8_t mask) -> bool { return this->screen_.symbol(byte) & mask; };
   bool comp_on = bit_on(0, 0x80);
   bool comp_a = bit_on(0, 0x40);
   bool comp_b = bit_on(0, 0x20);
@@ -308,11 +311,7 @@ std::string NibeBus::build_display_page_() {
   if (this->screen_.symbols_len() == 0) {
     page += "-- no display data yet --";
   } else {
-    char hex[8];
-    for (uint8_t i = 0; i < this->screen_.symbols_len(); i++) {
-      snprintf(hex, sizeof(hex), "%s%02X", i ? " " : "", (unsigned) this->screen_.symbol(i));
-      page += hex;
-    }
+    append_symbol_hex_(page, this->screen_);
   }
   page += "</b></div>";
 
@@ -320,7 +319,7 @@ std::string NibeBus::build_display_page_() {
   page += "<table>";
   char buf[64];
   for (const auto &b : WEB_BITS) {
-    bool on = this->screen_.symbols_len() > b.byte && ((this->screen_.symbol(b.byte) >> b.bit) & 1);
+    bool on = (this->screen_.symbol(b.byte) >> b.bit) & 1;
     bool confirmed_unmapped = !b.confirmed && b.label[0] == '?';
     snprintf(buf, sizeof(buf), "<tr class=%s data-b='%u.%u'><td class=bit>b%u.%u</td><td", on ? "on" : "off",
              (unsigned) b.byte, (unsigned) b.bit, (unsigned) b.byte, (unsigned) b.bit);

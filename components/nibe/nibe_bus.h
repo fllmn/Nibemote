@@ -417,7 +417,7 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   std::vector<std::pair<uint8_t, text_sensor::TextSensor *>> f2025_frame_hex_sinks_{};
 #endif
 #ifdef USE_NIBE_DISPLAY_WEB
-  // ---- display-page state: the page builders read it — same task context ----
+  // ---- display-page declarations: the page builders run in loop() — same task context ----
   void web_handle_action_(const std::string &action);
   std::string build_display_page_();
   std::string build_display_json_();
