@@ -1,0 +1,647 @@
+uv sync
+.venv/bin/esphome logs --device 10.42.0.131              configs/nibemote.yaml  
+[15:14:55.452][I][app:164]: ESPHome version 2026.10.2 compiled on 2026-11-24 15:07:41 +0100
+[15:14:55.452][I][app:171]: ESP32 Chip: ESP32-S3 rev0.2, 2 core(s)
+[15:14:55.453][W][app:189]: Set flash_chip: generic under esp32 > framework > advanced to save IRAM
+[15:14:55.453][C][logger:218]: Logger:
+[15:14:55.453][C][logger:218]:   Max Level: DEBUG
+[15:14:55.453][C][logger:218]:   Initial Level: DEBUG
+[15:14:55.457][C][logger:225]:   Log Baud Rate: 115200
+[15:14:55.457][C][logger:225]:   Hardware UART: USB_CDC
+[15:14:55.458][C][logger:234]:   Task Log Buffer Size: 768 bytes
+[15:14:55.458][C][rs485_bus:452]: RS485Bus:
+[15:14:55.458][C][rs485_bus:453]:   mode: hardware ISR
+[15:14:55.461][C][rs485_bus:454]:   baud: 19200, gap: 4 byte-times (~2080 us)
+[15:14:55.461][C][rs485_bus:456]:   active: 1
+[15:14:55.462][C][rs485_bus:457]:   line: 9-bit, marking slot on TX+RX (engine passes per-byte marks; protocol.md)
+[15:14:55.462][C][rs485_bus:458]:   engine attached: yes
+[15:14:55.581][C][nibe:1007]: NibeBus:
+[15:14:55.582][C][nibe:1008]:   role: emulator, address: 00F9
+[15:14:55.582][C][nibe:1009]:   rows 2/3/4 seen: 1/1/1, request pump: OFF, menu_reply: ON
+[15:14:55.582][C][nibe:1014]:   9-bit line: TX marks ENQ 1 / data 0; RX carries the slot as a per-byte fact
+[15:14:55.582][C][nibe:1022]:   outbound units: content-request, key, register-read, menu-state-0x32
+[15:14:55.582][C][nibe:1024]:   engine timings: poll_reply 2400 us, grant_frame 160 us, tx_byte_gap 180 us, frame_close 670 us, push_ack 15400 us, reply_drops 0
+[15:14:55.583][C][nibe:1029]:   announce governor: burst 2, breath 2 (policy; hypotheses.md 1)
+[15:14:55.583][C][nibe:1031]:   0xD4 clock answer: ENABLED, tail 0x00 (0=auto: day-of-week, Sunday=1; answers only when the clock is valid)
+[15:14:55.750][C][network:050]: Network:
+[15:14:55.750][C][network:050]:   TCP send buffer: 5760 bytes
+[15:14:55.750][C][captive_portal:162]: Captive Portal:
+[15:14:55.750][C][wifi:1688]: WiFi:
+[15:14:55.750][C][wifi:1688]:   Local MAC: 28:84:85:87:AA:FC
+[15:14:55.750][C][wifi:1688]:   Connected: YES
+[15:14:55.751][C][wifi:1392]:   IP Address: 10.42.0.131
+[15:14:55.751][C][wifi:1403]:   SSID: 'FRA'
+[15:14:55.751][C][wifi:1403]:   BSSID: 04:D9:F5:29:D1:51
+[15:14:55.751][C][wifi:1403]:   Hostname: 'nibemote'
+[15:14:55.751][C][wifi:1403]:   Signal strength: -66 dB ▂▄▆█
+[15:14:55.751][C][wifi:1403]:   Channel: 2
+[15:14:55.751][C][wifi:1403]:   Subnet: 255.255.255.0
+[15:14:55.751][C][wifi:1403]:   Gateway: 10.42.0.1
+[15:14:55.751][C][wifi:1403]:   DNS1: 10.42.0.1
+[15:14:55.751][C][wifi:1403]:   DNS2: 0.0.0.0
+[15:14:55.752][C][web_server:430]: Web Server:
+[15:14:55.752][C][web_server:430]:   Address: nibemote.local:80
+[15:14:55.753][C][sntp:058]: SNTP Time:
+[15:14:55.753][C][sntp:061]:   Server 0: '0.pool.ntp.org'
+[15:14:55.753][C][sntp:061]:   Server 1: '1.pool.ntp.org'
+[15:14:55.753][C][sntp:061]:   Server 2: '2.pool.ntp.org'
+[15:14:55.754][C][time:049]: Timezone: UTC+1:00 (DST UTC+2:00)
+[15:14:55.754][C][time:055]: Current time: 2026-11-24 15:14:55
+[15:14:55.754][C][esphome.ota:129]: Over-The-Air updates:
+[15:14:55.754][C][esphome.ota:129]:   Address: nibemote.local:3232
+[15:14:55.754][C][esphome.ota:129]:   Version: 2
+[15:14:55.756][C][safe_mode:058]: Safe Mode:
+[15:14:55.756][C][safe_mode:058]:   Successful after: 60s
+[15:14:55.756][C][safe_mode:058]:   Invoke after: 10 attempts
+[15:14:55.756][C][safe_mode:058]:   Duration: 300s
+[15:14:55.756][C][safe_mode:079]:   Bootloader rollback: supported
+[15:14:55.778][C][web_server.ota:256]: Web Server OTA
+[15:14:55.778][C][api:368]: Server:
+[15:14:55.778][C][api:368]:   Address: nibemote.local:6053
+[15:14:55.778][C][api:368]:   Listen backlog: 4
+[15:14:55.778][C][api:368]:   Max connections: 5
+[15:14:55.816][C][api:380]:   Noise encryption: NO
+[15:14:55.899][C][mdns:324]: mDNS:
+[15:14:55.899][C][mdns:324]:   Hostname: nibemote
+[15:14:56.411][S][binary_sensor]: 'Display polled' >> OFF
+[15:15:02.161][I][nibe:977]: bus: frames ok=1988 bad=0 polls_own=2843 other=520 tx=4087 txref=11 replydrop=0 gaps=0 echoes=0 anomalies=3 wire_drop=0
+[15:15:02.218][I][nibe:980]: bus health: frm_err=0 par_err=13263 gl=2 min_rx_delta=520 us
+[15:15:02.218][S][sensor]: 'Frames OK' >> 1988 
+[15:15:02.219][S][sensor]: 'Frames bad checksum' >> 0 
+[15:15:02.219][S][sensor]: 'Polls to display' >> 2843 
+[15:15:02.219][S][sensor]: 'Anomalies' >> 3 
+[15:15:03.562][I][nibe:586]: ex 00F9 @201809709 | tx 06 ACK | rx 03 ETX*
+[15:15:03.568][I][nibe:586]: ex 00F5 @201825553 | rx 06 ACK | rx 03 ETX*
+[15:15:03.578][I][nibe:586]: ex 00F9 @201828766 | tx 06 ACK | rx 03 ETX*
+[15:15:03.599][I][nibe:586]: ex 00F9 @201847205 | tx 06 ACK | rx 03 ETX*
+[15:15:03.650][S][binary_sensor]: 'Display polled' >> ON
+[15:15:04.691][I][nibe:877]: master 0xD4 clock query: queueing 26 11 24 15 15 04 03 (2026-11-24 15:15:04)
+[15:15:04.724][I][nibe:586]: ex 00F9 @202908669 | tx 06 ACK | rx 000A D4[] | tx 06 ACK | rx 03 ETX*
+[15:15:04.747][I][nibe:586]: ex 00F9 @203003248 | tx 05 ENQ* | rx 06 ACK* | tx 00F9 D4[26 11 24 15 15 04 03] | rx 06 ACK* | tx 03 ETX
+[15:15:04.796][I][nibe:586]: ex 00F9 @203025108 | tx 06 ACK | rx 000A 51[   NIBE AB] | tx 06 ACK | rx 03 ETX*
+[15:15:04.850][I][nibe:586]: ex 00F9 @203068736 | tx 06 ACK | rx 000A 52[      VVM 300       ] | tx 06 ACK | rx 03 ETX*
+[15:15:04.871][S][text_sensor]: 'Display row 2' >> '   NIBE AB'
+[15:15:04.871][S][text_sensor]: 'Display row 3' >> '      VVM 300       '
+[15:15:04.914][I][nibe:586]: ex 00F9 @203123206 | tx 06 ACK | rx 000A 53[      v. 1.25       ] | tx 06 ACK | rx 03 ETX*
+[15:15:04.993][S][text_sensor]: 'Display row 4' >> '      v. 1.25       '
+[15:15:05.543][I][nibe:586]: ex 00F9 @203760673 | tx 06 ACK | rx 000A 50[FF FF FF] | tx 06 ACK | rx 03 ETX*
+[15:15:05.617][S][text_sensor]: 'Display row 1 (symbols, hex)' >> 'FF FF FF '
+[15:15:06.599][I][nibe:835]: register 0x40 answer: 05 40 7A 
+[15:15:06.606][I][nibe:586]: ex 00F5 @204852805 | rx 06 ACK | rx 000A 72[05 40] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 40 7A] | rx 06 ACK | rx 03 ETX
+[15:15:06.612][I][nibe:835]: register 0x41 answer: 05 41 00 
+[15:15:06.612][I][nibe:586]: ex 00F5 @204869809 | rx 06 ACK | rx 000A 72[05 41] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 41 00] | rx 06 ACK | rx 03 ETX
+[15:15:06.621][I][nibe:835]: register 0x42 answer: 05 42 35 
+[15:15:06.640][I][nibe:586]: ex 00F5 @204886747 | rx 06 ACK | rx 000A 72[05 42] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 42 35] | rx 06 ACK | rx 03 ETX
+[15:15:06.648][I][nibe:835]: register 0x40 answer: 05 40 7A 
+[15:15:06.649][I][nibe:586]: ex 00F5 @204903757 | rx 06 ACK | rx 000A 72[05 40] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 40 7A] | rx 06 ACK | rx 03 ETX
+[15:15:06.662][I][nibe:835]: register 0x41 answer: 05 41 00 
+[15:15:06.668][I][nibe:586]: ex 00F5 @204920715 | rx 06 ACK | rx 000A 72[05 41] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 41 00] | rx 06 ACK | rx 03 ETX
+[15:15:06.685][I][nibe:835]: register 0x42 answer: 05 42 35 
+[15:15:06.687][I][nibe:586]: ex 00F5 @204937670 | rx 06 ACK | rx 000A 72[05 42] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 42 35] | rx 06 ACK | rx 03 ETX
+[15:15:06.704][I][nibe:835]: register 0x43 answer: 05 43 09 
+[15:15:06.709][I][nibe:586]: ex 00F5 @204954657 | rx 06 ACK | rx 000A 72[05 43] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 43 09] | rx 06 ACK | rx 03 ETX
+[15:15:06.709][I][nibe:835]: register 0x44 answer: 05 44 06 
+[15:15:06.727][I][nibe:586]: ex 00F5 @204971612 | rx 06 ACK | rx 000A 72[05 44] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 44 06] | rx 06 ACK | rx 03 ETX
+[15:15:06.732][I][nibe:586]: ex 00F5 @204988603 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:06.750][I][nibe:835]: register 0x45 answer: 05 45 00 
+[15:15:06.752][I][nibe:586]: ex 00F5 @204998024 | rx 06 ACK | rx 000A 72[05 45] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 45 00] | rx 06 ACK | rx 03 ETX
+[15:15:06.753][I][nibe:835]: register 0x46 answer: 05 46 00 
+[15:15:06.771][I][nibe:586]: ex 00F5 @205015304 | rx 06 ACK | rx 000A 72[05 46] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 46 00] | rx 06 ACK | rx 03 ETX
+[15:15:06.777][I][nibe:835]: register 0x47 answer: 05 47 14 
+[15:15:06.778][I][nibe:586]: ex 00F5 @205032282 | rx 06 ACK | rx 000A 72[05 47] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 47 14] | rx 06 ACK | rx 03 ETX
+[15:15:06.794][I][nibe:835]: register 0x48 answer: 05 48 14 
+[15:15:06.799][I][nibe:586]: ex 00F5 @205049355 | rx 06 ACK | rx 000A 72[05 48] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 48 14] | rx 06 ACK | rx 03 ETX
+[15:15:06.815][I][nibe:835]: register 0x49 answer: 05 49 37 
+[15:15:06.818][I][nibe:586]: ex 00F5 @205066329 | rx 06 ACK | rx 000A 72[05 49] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 49 37] | rx 06 ACK | rx 03 ETX
+[15:15:06.818][I][nibe:835]: register 0x4A answer: 05 4A 2D 
+[15:15:06.836][I][nibe:586]: ex 00F5 @205083294 | rx 06 ACK | rx 000A 72[05 4A] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 4A 2D] | rx 06 ACK | rx 03 ETX
+[15:15:06.842][I][nibe:835]: register 0x4B answer: 05 4B 0F 
+[15:15:06.842][I][nibe:586]: ex 00F5 @205100265 | rx 06 ACK | rx 000A 72[05 4B] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 4B 0F] | rx 06 ACK | rx 03 ETX
+[15:15:06.858][I][nibe:835]: register 0x4C answer: 05 4C 0F 
+[15:15:06.864][I][nibe:586]: ex 00F5 @205117236 | rx 06 ACK | rx 000A 72[05 4C] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 4C 0F] | rx 06 ACK | rx 03 ETX
+[15:15:06.879][I][nibe:835]: register 0x4D answer: 05 4D 00 
+[15:15:06.883][I][nibe:586]: ex 00F5 @205134191 | rx 06 ACK | rx 000A 72[05 4D] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 4D 00] | rx 06 ACK | rx 03 ETX
+[15:15:06.883][I][nibe:586]: ex 00F5 @205151152 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:06.904][I][nibe:835]: register 0x4E answer: 05 4E 00 
+[15:15:06.910][I][nibe:586]: ex 00F5 @205160609 | rx 06 ACK | rx 000A 72[05 4E] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 4E 00] | rx 06 ACK | rx 03 ETX
+[15:15:06.926][I][nibe:835]: register 0x4F answer: 05 4F 5A 
+[15:15:06.926][I][nibe:586]: ex 00F5 @205177819 | rx 06 ACK | rx 000A 72[05 4F] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 4F 5A] | rx 06 ACK | rx 03 ETX
+[15:15:06.944][I][nibe:835]: register 0x50 answer: 05 50 0A 
+[15:15:06.955][I][nibe:586]: ex 00F5 @205194783 | rx 06 ACK | rx 000A 72[05 50] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 50 0A] | rx 06 ACK | rx 03 ETX
+[15:15:06.955][I][nibe:835]: register 0x51 answer: 05 51 00 
+[15:15:06.966][I][nibe:586]: ex 00F5 @205211848 | rx 06 ACK | rx 000A 72[05 51] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 51 00] | rx 06 ACK | rx 03 ETX
+[15:15:06.972][I][nibe:835]: register 0x52 answer: 05 52 00 
+[15:15:06.972][I][nibe:586]: ex 00F5 @205228821 | rx 06 ACK | rx 000A 72[05 52] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 52 00] | rx 06 ACK | rx 03 ETX
+[15:15:06.991][I][nibe:835]: register 0x53 answer: 05 53 1E 
+[15:15:06.993][I][nibe:586]: ex 00F5 @205245870 | rx 06 ACK | rx 000A 72[05 53] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 53 1E] | rx 06 ACK | rx 03 ETX
+[15:15:07.011][I][nibe:835]: register 0x54 answer: 05 54 C4 
+[15:15:07.016][I][nibe:586]: ex 00F5 @205262812 | rx 06 ACK | rx 000A 72[05 54] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 54 C4] | rx 06 ACK | rx 03 ETX
+[15:15:07.016][I][nibe:835]: register 0x55 answer: 05 55 01 
+[15:15:07.032][I][nibe:586]: ex 00F5 @205279792 | rx 06 ACK | rx 000A 72[05 55] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 55 01] | rx 06 ACK | rx 03 ETX
+[15:15:07.037][I][nibe:835]: register 0x56 answer: 05 56 01 
+[15:15:07.037][I][nibe:586]: ex 00F5 @205296734 | rx 06 ACK | rx 000A 72[05 56] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 56 01] | rx 06 ACK | rx 03 ETX
+[15:15:07.058][I][nibe:586]: ex 00F5 @205313715 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:07.058][I][nibe:835]: register 0x57 answer: 05 57 00 
+[15:15:07.078][I][nibe:586]: ex 00F5 @205323185 | rx 06 ACK | rx 000A 72[05 57] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 57 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.084][I][nibe:835]: register 0x58 answer: 05 58 00 
+[15:15:07.084][I][nibe:586]: ex 00F5 @205340427 | rx 06 ACK | rx 000A 72[05 58] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 58 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.101][I][nibe:835]: register 0x59 answer: 05 59 2D 
+[15:15:07.106][I][nibe:586]: ex 00F5 @205357401 | rx 06 ACK | rx 000A 72[05 59] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 59 2D] | rx 06 ACK | rx 03 ETX
+[15:15:07.119][I][nibe:835]: register 0x5A answer: 05 5A 32 
+[15:15:07.124][I][nibe:586]: ex 00F5 @205374465 | rx 06 ACK | rx 000A 72[05 5A] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 5A 32] | rx 06 ACK | rx 03 ETX
+[15:15:07.140][I][nibe:835]: register 0x5B answer: 05 5B FF 
+[15:15:07.147][I][nibe:586]: ex 00F5 @205391420 | rx 06 ACK | rx 000A 72[05 5B] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 5B FF] | rx 06 ACK | rx 03 ETX
+[15:15:07.147][I][nibe:835]: register 0x5C answer: 05 5C FF 
+[15:15:07.161][I][nibe:586]: ex 00F5 @205408497 | rx 06 ACK | rx 000A 72[05 5C] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 5C FF] | rx 06 ACK | rx 03 ETX
+[15:15:07.166][I][nibe:835]: register 0x5D answer: 05 5D 41 
+[15:15:07.171][I][nibe:586]: ex 00F5 @205425455 | rx 06 ACK | rx 000A 72[05 5D] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 5D 41] | rx 06 ACK | rx 03 ETX
+[15:15:07.185][I][nibe:835]: register 0x5E answer: 05 5E 0E 
+[15:15:07.190][I][nibe:586]: ex 00F5 @205442529 | rx 06 ACK | rx 000A 72[05 5E] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 5E 0E] | rx 06 ACK | rx 03 ETX
+[15:15:07.206][I][nibe:835]: register 0x5F answer: 05 5F 8A 
+[15:15:07.212][I][nibe:586]: ex 00F5 @205459494 | rx 06 ACK | rx 000A 72[05 5F] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 5F 8A] | rx 06 ACK | rx 03 ETX
+[15:15:07.212][I][nibe:586]: ex 00F5 @205476465 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:07.228][I][nibe:835]: register 0x60 answer: 05 60 F6 
+[15:15:07.232][I][nibe:586]: ex 00F5 @205485935 | rx 06 ACK | rx 000A 72[05 60] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 60 F6] | rx 06 ACK | rx 03 ETX
+[15:15:07.249][I][nibe:835]: register 0x61 answer: 05 61 D7 
+[15:15:07.254][I][nibe:586]: ex 00F5 @205503176 | rx 06 ACK | rx 000A 72[05 61] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 61 D7] | rx 06 ACK | rx 03 ETX
+[15:15:07.270][I][nibe:835]: register 0x62 answer: 05 62 00 
+[15:15:07.271][I][nibe:586]: ex 00F5 @205520132 | rx 06 ACK | rx 000A 72[05 62] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 62 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.277][I][nibe:835]: register 0x63 answer: 05 63 FD 
+[15:15:07.294][I][nibe:586]: ex 00F5 @205537195 | rx 06 ACK | rx 000A 72[05 63] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 63 FD] | rx 06 ACK | rx 03 ETX
+[15:15:07.299][I][nibe:835]: register 0x64 answer: 05 64 0A 
+[15:15:07.299][I][nibe:586]: ex 00F5 @205554167 | rx 06 ACK | rx 000A 72[05 64] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 64 0A] | rx 06 ACK | rx 03 ETX
+[15:15:07.317][I][nibe:835]: register 0x65 answer: 05 65 00 
+[15:15:07.322][I][nibe:586]: ex 00F5 @205571215 | rx 06 ACK | rx 000A 72[05 65] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 65 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.338][I][nibe:835]: register 0x66 answer: 05 66 07 
+[15:15:07.341][I][nibe:586]: ex 00F5 @205588170 | rx 06 ACK | rx 000A 72[05 66] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 66 07] | rx 06 ACK | rx 03 ETX
+[15:15:07.346][I][nibe:835]: register 0x67 answer: 05 67 32 
+[15:15:07.365][I][nibe:586]: ex 00F5 @205605131 | rx 06 ACK | rx 000A 72[05 67] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 67 32] | rx 06 ACK | rx 03 ETX
+[15:15:07.365][I][nibe:835]: register 0x68 answer: 05 68 02 
+[15:15:07.366][I][nibe:586]: ex 00F5 @205622125 | rx 06 ACK | rx 000A 72[05 68] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 68 02] | rx 06 ACK | rx 03 ETX
+[15:15:07.383][I][nibe:586]: ex 00F5 @205639169 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:07.388][I][nibe:835]: register 0x69 answer: 05 69 5A 
+[15:15:07.389][I][nibe:586]: ex 00F5 @205648626 | rx 06 ACK | rx 000A 72[05 69] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 69 5A] | rx 06 ACK | rx 03 ETX
+[15:15:07.409][I][nibe:835]: register 0x6A answer: 05 6A F9 
+[15:15:07.414][I][nibe:586]: ex 00F5 @205665849 | rx 06 ACK | rx 000A 72[05 6A] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 6A F9] | rx 06 ACK | rx 03 ETX
+[15:15:07.426][I][nibe:835]: register 0x6B answer: 05 6B 3C 
+[15:15:07.432][I][nibe:586]: ex 00F5 @205682662 | rx 06 ACK | rx 000A 72[05 6B] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 6B 3C] | rx 06 ACK | rx 03 ETX
+[15:15:07.447][I][nibe:835]: register 0x6C answer: 05 6C 00 
+[15:15:07.453][I][nibe:586]: ex 00F5 @205699623 | rx 06 ACK | rx 000A 72[05 6C] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 6C 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.453][I][nibe:835]: register 0x6D answer: 05 6D 0F 
+[15:15:07.467][I][nibe:586]: ex 00F5 @205716427 | rx 06 ACK | rx 000A 72[05 6D] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 6D 0F] | rx 06 ACK | rx 03 ETX
+[15:15:07.470][I][nibe:835]: register 0x6E answer: 05 6E 23 
+[15:15:07.476][I][nibe:586]: ex 00F5 @205733382 | rx 06 ACK | rx 000A 72[05 6E] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 6E 23] | rx 06 ACK | rx 03 ETX
+[15:15:07.491][I][nibe:835]: register 0x6F answer: 05 6F 0F 
+[15:15:07.497][I][nibe:586]: ex 00F5 @205750253 | rx 06 ACK | rx 000A 72[05 6F] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 6F 0F] | rx 06 ACK | rx 03 ETX
+[15:15:07.512][I][nibe:835]: register 0x70 answer: 05 70 23 
+[15:15:07.519][I][nibe:586]: ex 00F5 @205767231 | rx 06 ACK | rx 000A 72[05 70] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 70 23] | rx 06 ACK | rx 03 ETX
+[15:15:07.533][I][nibe:835]: register 0x71 answer: 05 71 1E 
+[15:15:07.537][I][nibe:586]: ex 00F5 @205784105 | rx 06 ACK | rx 000A 72[05 71] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 71 1E] | rx 06 ACK | rx 03 ETX
+[15:15:07.537][I][nibe:586]: ex 00F5 @205801070 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:07.557][I][nibe:835]: register 0x72 answer: 05 72 70 
+[15:15:07.562][I][nibe:586]: ex 00F5 @205810453 | rx 06 ACK | rx 000A 72[05 72] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 72 70] | rx 06 ACK | rx 03 ETX
+[15:15:07.562][I][nibe:835]: register 0x73 answer: 05 73 FE 
+[15:15:07.578][I][nibe:586]: ex 00F5 @205827389 | rx 06 ACK | rx 000A 72[05 73] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 73 FE] | rx 06 ACK | rx 03 ETX
+[15:15:07.583][I][nibe:835]: register 0x74 answer: 05 74 02 
+[15:15:07.583][I][nibe:586]: ex 00F5 @205844276 | rx 06 ACK | rx 000A 72[05 74] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 74 02] | rx 06 ACK | rx 03 ETX
+[15:15:07.601][I][nibe:835]: register 0x75 answer: 05 75 00 
+[15:15:07.603][I][nibe:586]: ex 00F5 @205861253 | rx 06 ACK | rx 000A 72[05 75] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 75 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.622][I][nibe:835]: register 0x76 answer: 05 76 00 
+[15:15:07.627][I][nibe:586]: ex 00F5 @205878124 | rx 06 ACK | rx 000A 72[05 76] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 76 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.644][I][nibe:835]: register 0x77 answer: 05 77 19 
+[15:15:07.647][I][nibe:586]: ex 00F5 @205895089 | rx 06 ACK | rx 000A 72[05 77] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 77 19] | rx 06 ACK | rx 03 ETX
+[15:15:07.652][I][nibe:835]: register 0x78 answer: 05 78 14 
+[15:15:07.659][I][nibe:586]: ex 00F5 @205911947 | rx 06 ACK | rx 000A 72[05 78] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 78 14] | rx 06 ACK | rx 03 ETX
+[15:15:07.665][I][nibe:835]: register 0x79 answer: 05 79 03 
+[15:15:07.680][I][nibe:586]: ex 00F5 @205928941 | rx 06 ACK | rx 000A 72[05 79] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 79 03] | rx 06 ACK | rx 03 ETX
+[15:15:07.685][I][nibe:835]: register 0x7A answer: 05 7A 0F 
+[15:15:07.685][I][nibe:586]: ex 00F5 @205945815 | rx 06 ACK | rx 000A 72[05 7A] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 7A 0F] | rx 06 ACK | rx 03 ETX
+[15:15:07.702][I][nibe:586]: ex 00F5 @205962776 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:07.704][I][nibe:835]: register 0x7B answer: 05 7B 0A 
+[15:15:07.723][I][nibe:586]: ex 00F5 @205972131 | rx 06 ACK | rx 000A 72[05 7B] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 7B 0A] | rx 06 ACK | rx 03 ETX
+[15:15:07.729][I][nibe:835]: register 0x7C answer: 05 7C 00 
+[15:15:07.729][I][nibe:586]: ex 00F5 @205988973 | rx 06 ACK | rx 000A 72[05 7C] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 7C 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.745][I][nibe:835]: register 0x7D answer: 05 7D 64 
+[15:15:07.751][I][nibe:586]: ex 00F5 @206005796 | rx 06 ACK | rx 000A 72[05 7D] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 7D 64] | rx 06 ACK | rx 03 ETX
+[15:15:07.766][I][nibe:835]: register 0x7E answer: 05 7E 02 
+[15:15:07.776][I][nibe:586]: ex 00F5 @206022670 | rx 06 ACK | rx 000A 72[05 7E] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 7E 02] | rx 06 ACK | rx 03 ETX
+[15:15:07.787][I][nibe:835]: register 0x7F answer: 05 7F 02 
+[15:15:07.793][I][nibe:586]: ex 00F5 @206039503 | rx 06 ACK | rx 000A 72[05 7F] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 7F 02] | rx 06 ACK | rx 03 ETX
+[15:15:07.793][I][nibe:835]: register 0x80 answer: 05 80 14 
+[15:15:07.808][I][nibe:586]: ex 00F5 @206056509 | rx 06 ACK | rx 000A 72[05 80] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 80 14] | rx 06 ACK | rx 03 ETX
+[15:15:07.811][I][nibe:835]: register 0x81 answer: 05 81 14 
+[15:15:07.819][I][nibe:586]: ex 00F5 @206073384 | rx 06 ACK | rx 000A 72[05 81] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 81 14] | rx 06 ACK | rx 03 ETX
+[15:15:07.832][I][nibe:835]: register 0x82 answer: 05 82 00 
+[15:15:07.838][I][nibe:586]: ex 00F5 @206090271 | rx 06 ACK | rx 000A 72[05 82] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 82 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.853][I][nibe:835]: register 0x83 answer: 05 83 12 
+[15:15:07.859][I][nibe:586]: ex 00F5 @206107171 | rx 06 ACK | rx 000A 72[05 83] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 83 12] | rx 06 ACK | rx 03 ETX
+[15:15:07.859][I][nibe:586]: ex 00F5 @206124148 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:07.877][I][nibe:835]: register 0x84 answer: 05 84 00 
+[15:15:07.880][I][nibe:586]: ex 00F5 @206133528 | rx 06 ACK | rx 000A 72[05 84] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 84 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.898][I][nibe:835]: register 0x85 answer: 05 85 00 
+[15:15:07.905][I][nibe:586]: ex 00F5 @206150371 | rx 06 ACK | rx 000A 72[05 85] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 85 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.905][I][nibe:835]: register 0x86 answer: 05 86 00 
+[15:15:07.921][I][nibe:586]: ex 00F5 @206167246 | rx 06 ACK | rx 000A 72[05 86] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 86 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.925][I][nibe:835]: register 0x87 answer: 05 87 00 
+[15:15:07.926][I][nibe:586]: ex 00F5 @206184121 | rx 06 ACK | rx 000A 72[05 87] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 87 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.949][I][nibe:835]: register 0x88 answer: 05 88 00 
+[15:15:07.950][I][nibe:586]: ex 00F5 @206201097 | rx 06 ACK | rx 000A 72[05 88] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 88 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.961][I][nibe:835]: register 0x89 answer: 05 89 10 
+[15:15:07.968][I][nibe:586]: ex 00F5 @206217926 | rx 06 ACK | rx 000A 72[05 89] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 89 10] | rx 06 ACK | rx 03 ETX
+[15:15:07.983][I][nibe:835]: register 0x8A answer: 05 8A 00 
+[15:15:07.984][I][nibe:586]: ex 00F5 @206234768 | rx 06 ACK | rx 000A 72[05 8A] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 8A 00] | rx 06 ACK | rx 03 ETX
+[15:15:07.989][I][nibe:835]: register 0x8B answer: 05 8B 00 
+[15:15:08.006][I][nibe:586]: ex 00F5 @206251655 | rx 06 ACK | rx 000A 72[05 8B] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 8B 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.010][I][nibe:835]: register 0x8C answer: 05 8C 00 
+[15:15:08.010][I][nibe:586]: ex 00F5 @206268479 | rx 06 ACK | rx 000A 72[05 8C] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 8C 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.029][I][nibe:586]: ex 00F5 @206285353 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:08.034][I][nibe:835]: register 0x8D answer: 05 8D 00 
+[15:15:08.034][I][nibe:586]: ex 00F5 @206294662 | rx 06 ACK | rx 000A 72[05 8D] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 8D 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.054][I][nibe:835]: register 0x8E answer: 05 8E 00 
+[15:15:08.061][I][nibe:586]: ex 00F5 @206311485 | rx 06 ACK | rx 000A 72[05 8E] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 8E 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.072][I][nibe:835]: register 0x8F answer: 05 8F 00 
+[15:15:08.082][I][nibe:586]: ex 00F5 @206328360 | rx 06 ACK | rx 000A 72[05 8F] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 8F 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.093][I][nibe:835]: register 0x90 answer: 05 90 00 
+[15:15:08.098][I][nibe:586]: ex 00F5 @206345247 | rx 06 ACK | rx 000A 72[05 90] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 90 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.099][I][nibe:835]: register 0x91 answer: 05 91 00 
+[15:15:08.114][I][nibe:586]: ex 00F5 @206362121 | rx 06 ACK | rx 000A 72[05 91] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 91 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.117][I][nibe:835]: register 0x92 answer: 05 92 00 
+[15:15:08.127][I][nibe:586]: ex 00F5 @206379025 | rx 06 ACK | rx 000A 72[05 92] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 92 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.140][I][nibe:835]: register 0x93 answer: 05 93 00 
+[15:15:08.145][I][nibe:586]: ex 00F5 @206395896 | rx 06 ACK | rx 000A 72[05 93] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 93 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.161][I][nibe:835]: register 0x94 answer: 05 94 00 
+[15:15:08.166][I][nibe:586]: ex 00F5 @206412783 | rx 06 ACK | rx 000A 72[05 94] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 94 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.167][I][nibe:835]: register 0x95 answer: 05 95 00 
+[15:15:08.186][I][nibe:586]: ex 00F5 @206429686 | rx 06 ACK | rx 000A 72[05 95] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 95 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.187][I][nibe:586]: ex 00F5 @206446593 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:08.205][I][nibe:835]: register 0x96 answer: 05 96 00 
+[15:15:08.212][I][nibe:586]: ex 00F5 @206455961 | rx 06 ACK | rx 000A 72[05 96] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 96 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.212][I][nibe:835]: register 0x97 answer: 05 97 00 
+[15:15:08.229][I][nibe:586]: ex 00F5 @206472806 | rx 06 ACK | rx 000A 72[05 97] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 97 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.234][I][nibe:835]: register 0x98 answer: 05 98 00 
+[15:15:08.234][I][nibe:586]: ex 00F5 @206489696 | rx 06 ACK | rx 000A 72[05 98] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 98 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.247][I][nibe:835]: register 0x99 answer: 05 99 00 
+[15:15:08.249][I][nibe:586]: ex 00F5 @206506580 | rx 06 ACK | rx 000A 72[05 99] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 99 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.268][I][nibe:835]: register 0x9A answer: 05 9A 00 
+[15:15:08.273][I][nibe:586]: ex 00F5 @206523558 | rx 06 ACK | rx 000A 72[05 9A] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 9A 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.289][I][nibe:835]: register 0x9B answer: 05 9B 00 
+[15:15:08.291][I][nibe:586]: ex 00F5 @206540445 | rx 06 ACK | rx 000A 72[05 9B] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 9B 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.300][I][nibe:835]: register 0x9C answer: 05 9C 00 
+[15:15:08.315][I][nibe:586]: ex 00F5 @206557332 | rx 06 ACK | rx 000A 72[05 9C] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 9C 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.318][I][nibe:835]: register 0x9D answer: 05 9D 00 
+[15:15:08.318][I][nibe:586]: ex 00F5 @206574207 | rx 06 ACK | rx 000A 72[05 9D] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 9D 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.340][I][nibe:835]: register 0x9E answer: 05 9E 00 
+[15:15:08.347][I][nibe:586]: ex 00F5 @206591097 | rx 06 ACK | rx 000A 72[05 9E] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 9E 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.347][I][nibe:586]: ex 00F5 @206607981 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:08.360][I][nibe:835]: register 0x9F answer: 05 9F 00 
+[15:15:08.368][I][nibe:586]: ex 00F5 @206617436 | rx 06 ACK | rx 000A 72[05 9F] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 9F 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.379][I][nibe:835]: register 0xA0 answer: 05 A0 00 
+[15:15:08.389][I][nibe:586]: ex 00F5 @206634281 | rx 06 ACK | rx 000A 72[05 A0] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 A0 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.400][I][nibe:835]: register 0xA1 answer: 05 A1 00 
+[15:15:08.409][I][nibe:586]: ex 00F5 @206651230 | rx 06 ACK | rx 000A 72[05 A1] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 A1 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.409][I][nibe:835]: register 0xA2 answer: 05 A2 00 
+[15:15:08.423][I][nibe:586]: ex 00F5 @206668223 | rx 06 ACK | rx 000A 72[05 A2] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 A2 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.425][I][nibe:835]: register 0xA3 answer: 05 A3 00 
+[15:15:08.433][I][nibe:586]: ex 00F5 @206685303 | rx 06 ACK | rx 000A 72[05 A3] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 A3 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.445][I][nibe:835]: register 0xA4 answer: 05 A4 00 
+[15:15:08.450][I][nibe:586]: ex 00F5 @206702281 | rx 06 ACK | rx 000A 72[05 A4] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 A4 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.466][I][nibe:835]: register 0xA5 answer: 05 A5 00 
+[15:15:08.472][I][nibe:586]: ex 00F5 @206719258 | rx 06 ACK | rx 000A 72[05 A5] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 A5 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.473][I][nibe:835]: register 0xA6 answer: 05 A6 00 
+[15:15:08.491][I][nibe:586]: ex 00F5 @206736261 | rx 06 ACK | rx 000A 72[05 A6] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 A6 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.493][I][nibe:835]: register 0xA7 answer: 05 A7 FB 
+[15:15:08.498][I][nibe:586]: ex 00F5 @206753339 | rx 06 ACK | rx 000A 72[05 A7] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 A7 FB] | rx 06 ACK | rx 03 ETX
+[15:15:08.509][I][nibe:586]: ex 00F5 @206770329 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:08.528][I][nibe:835]: register 0xA8 answer: 05 A8 01 
+[15:15:08.530][I][nibe:586]: ex 00F5 @206779877 | rx 06 ACK | rx 000A 72[05 A8] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 A8 01] | rx 06 ACK | rx 03 ETX
+[15:15:08.536][I][nibe:835]: register 0xA9 answer: 05 A9 01 
+[15:15:08.551][I][nibe:586]: ex 00F5 @206797047 | rx 06 ACK | rx 000A 72[05 A9] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 A9 01] | rx 06 ACK | rx 03 ETX
+[15:15:08.554][I][nibe:835]: register 0xAA answer: 05 AA 00 
+[15:15:08.555][I][nibe:586]: ex 00F5 @206814115 | rx 06 ACK | rx 000A 72[05 AA] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 AA 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.574][I][nibe:835]: register 0xAB answer: 05 AB 00 
+[15:15:08.581][I][nibe:586]: ex 00F5 @206831092 | rx 06 ACK | rx 000A 72[05 AB] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 AB 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.595][I][nibe:835]: register 0xAC answer: 05 AC 00 
+[15:15:08.598][I][nibe:586]: ex 00F5 @206848156 | rx 06 ACK | rx 000A 72[05 AC] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 AC 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.604][I][nibe:835]: register 0xAD answer: 05 AD 00 
+[15:15:08.619][I][nibe:586]: ex 00F5 @206865134 | rx 06 ACK | rx 000A 72[05 AD] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 AD 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.623][I][nibe:835]: register 0xAE answer: 05 AE 00 
+[15:15:08.623][I][nibe:586]: ex 00F5 @206882227 | rx 06 ACK | rx 000A 72[05 AE] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 AE 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.642][I][nibe:835]: register 0xAF answer: 05 AF 00 
+[15:15:08.648][I][nibe:586]: ex 00F5 @206899204 | rx 06 ACK | rx 000A 72[05 AF] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 AF 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.666][I][nibe:835]: register 0xB0 answer: 05 B0 01 
+[15:15:08.667][I][nibe:586]: ex 00F5 @206916301 | rx 06 ACK | rx 000A 72[05 B0] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 B0 01] | rx 06 ACK | rx 03 ETX
+[15:15:08.672][I][nibe:586]: ex 00F5 @206933281 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:08.688][I][nibe:835]: register 0xB1 answer: 05 B1 01 
+[15:15:08.697][I][nibe:586]: ex 00F5 @206942839 | rx 06 ACK | rx 000A 72[05 B1] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 B1 01] | rx 06 ACK | rx 03 ETX
+[15:15:08.697][I][nibe:835]: register 0xB2 answer: 05 B2 00 
+[15:15:08.702][I][nibe:586]: ex 00F5 @206960026 | rx 06 ACK | rx 000A 72[05 B2] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 B2 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.709][I][nibe:835]: register 0xB3 answer: 05 B3 00 
+[15:15:08.727][I][nibe:586]: ex 00F5 @206977090 | rx 06 ACK | rx 000A 72[05 B3] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 B3 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.730][I][nibe:835]: register 0xB4 answer: 05 B4 00 
+[15:15:08.748][I][nibe:586]: ex 00F5 @206994077 | rx 06 ACK | rx 000A 72[05 B4] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 B4 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.753][I][nibe:835]: register 0xB5 answer: 05 B5 00 
+[15:15:08.754][I][nibe:586]: ex 00F5 @207011119 | rx 06 ACK | rx 000A 72[05 B5] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 B5 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.769][I][nibe:835]: register 0xB6 answer: 05 B6 32 
+[15:15:08.775][I][nibe:586]: ex 00F5 @207028077 | rx 06 ACK | rx 000A 72[05 B6] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 B6 32] | rx 06 ACK | rx 03 ETX
+[15:15:08.790][I][nibe:835]: register 0xB7 answer: 05 B7 32 
+[15:15:08.799][I][nibe:586]: ex 00F5 @207045170 | rx 06 ACK | rx 000A 72[05 B7] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 B7 32] | rx 06 ACK | rx 03 ETX
+[15:15:08.812][I][nibe:835]: register 0xB8 answer: 05 B8 38 
+[15:15:08.818][I][nibe:586]: ex 00F5 @207062147 | rx 06 ACK | rx 000A 72[05 B8] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 B8 38] | rx 06 ACK | rx 03 ETX
+[15:15:08.818][I][nibe:835]: register 0xB9 answer: 05 B9 04 
+[15:15:08.834][I][nibe:586]: ex 00F5 @207079212 | rx 06 ACK | rx 000A 72[05 B9] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 B9 04] | rx 06 ACK | rx 03 ETX
+[15:15:08.835][I][nibe:586]: ex 00F5 @207096202 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:08.854][I][nibe:835]: register 0xBA answer: 05 BA 04 
+[15:15:08.860][I][nibe:586]: ex 00F5 @207105643 | rx 06 ACK | rx 000A 72[05 BA] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 BA 04] | rx 06 ACK | rx 03 ETX
+[15:15:08.860][I][nibe:835]: register 0xBB answer: 05 BB 00 
+[15:15:08.876][I][nibe:586]: ex 00F5 @207122814 | rx 06 ACK | rx 000A 72[05 BB] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 BB 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.882][I][nibe:835]: register 0xBC answer: 05 BC 00 
+[15:15:08.882][I][nibe:586]: ex 00F5 @207139856 | rx 06 ACK | rx 000A 72[05 BC] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 BC 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.901][I][nibe:835]: register 0xBD answer: 05 BD 0F 
+[15:15:08.901][I][nibe:586]: ex 00F5 @207156833 | rx 06 ACK | rx 000A 72[05 BD] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 BD 0F] | rx 06 ACK | rx 03 ETX
+[15:15:08.919][I][nibe:835]: register 0xBE answer: 05 BE 03 
+[15:15:08.924][I][nibe:586]: ex 00F5 @207173901 | rx 06 ACK | rx 000A 72[05 BE] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 BE 03] | rx 06 ACK | rx 03 ETX
+[15:15:08.939][I][nibe:835]: register 0xBF answer: 05 BF 00 
+[15:15:08.944][I][nibe:586]: ex 00F5 @207190878 | rx 06 ACK | rx 000A 72[05 BF] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 BF 00] | rx 06 ACK | rx 03 ETX
+[15:15:08.950][I][nibe:835]: register 0xC0 answer: 05 C0 03 
+[15:15:08.961][I][nibe:586]: ex 00F5 @207207972 | rx 06 ACK | rx 000A 72[05 C0] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 C0 03] | rx 06 ACK | rx 03 ETX
+[15:15:08.965][I][nibe:835]: register 0xC1 answer: 05 C1 19 
+[15:15:08.965][I][nibe:586]: ex 00F5 @207224949 | rx 06 ACK | rx 000A 72[05 C1] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 C1 19] | rx 06 ACK | rx 03 ETX
+[15:15:08.984][I][nibe:835]: register 0xC2 answer: 05 C2 01 
+[15:15:08.990][I][nibe:586]: ex 00F5 @207242033 | rx 06 ACK | rx 000A 72[05 C2] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 C2 01] | rx 06 ACK | rx 03 ETX
+[15:15:09.005][I][nibe:586]: ex 00F5 @207259026 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:09.007][I][nibe:835]: register 0xC3 answer: 05 C3 28 
+[15:15:09.012][I][nibe:586]: ex 00F5 @207268571 | rx 06 ACK | rx 000A 72[05 C3] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 C3 28] | rx 06 ACK | rx 03 ETX
+[15:15:09.029][I][nibe:835]: register 0xC4 answer: 05 C4 00 
+[15:15:09.035][I][nibe:586]: ex 00F5 @207285757 | rx 06 ACK | rx 000A 72[05 C4] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 C4 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.049][I][nibe:835]: register 0xC5 answer: 05 C5 00 
+[15:15:09.055][I][nibe:586]: ex 00F5 @207302841 | rx 06 ACK | rx 000A 72[05 C5] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 C5 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.070][I][nibe:835]: register 0xC6 answer: 05 C6 00 
+[15:15:09.078][I][nibe:586]: ex 00F5 @207319834 | rx 06 ACK | rx 000A 72[05 C6] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 C6 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.078][I][nibe:835]: register 0xC7 answer: 05 C7 00 
+[15:15:09.095][I][nibe:586]: ex 00F5 @207336899 | rx 06 ACK | rx 000A 72[05 C7] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 C7 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.108][I][nibe:835]: register 0xC8 answer: 05 C8 00 
+[15:15:09.108][I][nibe:586]: ex 00F5 @207353879 | rx 06 ACK | rx 000A 72[05 C8] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 C8 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.116][I][nibe:835]: register 0xC9 answer: 05 C9 00 
+[15:15:09.121][I][nibe:586]: ex 00F5 @207370960 | rx 06 ACK | rx 000A 72[05 C9] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 C9 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.138][I][nibe:835]: register 0xCA answer: 05 CA 00 
+[15:15:09.140][I][nibe:586]: ex 00F5 @207387937 | rx 06 ACK | rx 000A 72[05 CA] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 CA 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.141][I][nibe:835]: register 0xCB answer: 05 CB 2C 
+[15:15:09.162][I][nibe:586]: ex 00F5 @207405017 | rx 06 ACK | rx 000A 72[05 CB] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 CB 2C] | rx 06 ACK | rx 03 ETX
+[15:15:09.167][I][nibe:586]: ex 00F5 @207421992 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:09.167][I][nibe:835]: register 0xCC answer: 05 CC 00 
+[15:15:09.183][I][nibe:586]: ex 00F5 @207431462 | rx 06 ACK | rx 000A 72[05 CC] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 CC 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.188][I][nibe:835]: register 0xCD answer: 05 CD 0A 
+[15:15:09.189][I][nibe:586]: ex 00F5 @207448733 | rx 06 ACK | rx 000A 72[05 CD] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 CD 0A] | rx 06 ACK | rx 03 ETX
+[15:15:09.209][I][nibe:835]: register 0xCE answer: 05 CE 00 
+[15:15:09.209][I][nibe:586]: ex 00F5 @207465794 | rx 06 ACK | rx 000A 72[05 CE] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 CE 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.227][I][nibe:835]: register 0xCF answer: 05 CF 14 
+[15:15:09.232][I][nibe:586]: ex 00F5 @207482771 | rx 06 ACK | rx 000A 72[05 CF] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 CF 14] | rx 06 ACK | rx 03 ETX
+[15:15:09.248][I][nibe:835]: register 0xD0 answer: 05 D0 00 
+[15:15:09.252][I][nibe:586]: ex 00F5 @207499851 | rx 06 ACK | rx 000A 72[05 D0] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 D0 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.257][I][nibe:835]: register 0xD1 answer: 05 D1 00 
+[15:15:09.269][I][nibe:586]: ex 00F5 @207516848 | rx 06 ACK | rx 000A 72[05 D1] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 D1 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.273][I][nibe:835]: register 0xD2 answer: 05 D2 00 
+[15:15:09.273][I][nibe:586]: ex 00F5 @207533925 | rx 06 ACK | rx 000A 72[05 D2] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 D2 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.292][I][nibe:835]: register 0xD3 answer: 05 D3 00 
+[15:15:09.298][I][nibe:586]: ex 00F5 @207550899 | rx 06 ACK | rx 000A 72[05 D3] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 D3 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.314][I][nibe:835]: register 0xD4 answer: 05 D4 37 
+[15:15:09.315][I][nibe:586]: ex 00F5 @207567964 | rx 06 ACK | rx 000A 72[05 D4] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 D4 37] | rx 06 ACK | rx 03 ETX
+[15:15:09.320][I][nibe:586]: ex 00F5 @207584944 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:09.338][I][nibe:835]: register 0xD5 answer: 05 D5 1E 
+[15:15:09.343][I][nibe:586]: ex 00F5 @207594402 | rx 06 ACK | rx 000A 72[05 D5] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 D5 1E] | rx 06 ACK | rx 03 ETX
+[15:15:09.359][I][nibe:835]: register 0xD6 answer: 05 D6 0A 
+[15:15:09.365][I][nibe:586]: ex 00F5 @207611673 | rx 06 ACK | rx 000A 72[05 D6] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 D6 0A] | rx 06 ACK | rx 03 ETX
+[15:15:09.379][I][nibe:835]: register 0xD7 answer: 05 D7 03 
+[15:15:09.383][I][nibe:586]: ex 00F5 @207628659 | rx 06 ACK | rx 000A 72[05 D7] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 D7 03] | rx 06 ACK | rx 03 ETX
+[15:15:09.384][I][nibe:835]: register 0xD8 answer: 05 D8 00 
+[15:15:09.388][I][nibe:586]: ex 00F5 @207645566 | rx 06 ACK | rx 000A 72[05 D8] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 D8 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.404][I][nibe:835]: register 0xD9 answer: 05 D9 00 
+[15:15:09.413][I][nibe:586]: ex 00F5 @207662466 | rx 06 ACK | rx 000A 72[05 D9] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 D9 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.425][I][nibe:835]: register 0xDA answer: 05 DA 02 
+[15:15:09.430][I][nibe:586]: ex 00F5 @207679370 | rx 06 ACK | rx 000A 72[05 DA] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 DA 02] | rx 06 ACK | rx 03 ETX
+[15:15:09.446][I][nibe:835]: register 0xDB answer: 05 DB 00 
+[15:15:09.450][I][nibe:586]: ex 00F5 @207696363 | rx 06 ACK | rx 000A 72[05 DB] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 DB 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.450][I][nibe:835]: register 0xDC answer: 05 DC 01 
+[15:15:09.470][I][nibe:586]: ex 00F5 @207713250 | rx 06 ACK | rx 000A 72[05 DC] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 DC 01] | rx 06 ACK | rx 03 ETX
+[15:15:09.475][I][nibe:835]: register 0xDD answer: 05 DD 00 
+[15:15:09.475][I][nibe:586]: ex 00F5 @207730231 | rx 06 ACK | rx 000A 72[05 DD] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 DD 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.491][I][nibe:586]: ex 00F5 @207747115 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:09.497][I][nibe:835]: register 0xDE answer: 05 DE 02 
+[15:15:09.497][I][nibe:586]: ex 00F5 @207756467 | rx 06 ACK | rx 000A 72[05 DE] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 DE 02] | rx 06 ACK | rx 03 ETX
+[15:15:09.515][I][nibe:835]: register 0xDF answer: 05 DF 01 
+[15:15:09.516][I][nibe:586]: ex 00F5 @207773338 | rx 06 ACK | rx 000A 72[05 DF] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 DF 01] | rx 06 ACK | rx 03 ETX
+[15:15:09.534][I][nibe:835]: register 0xE0 answer: 05 E0 00 
+[15:15:09.539][I][nibe:586]: ex 00F5 @207790212 | rx 06 ACK | rx 000A 72[05 E0] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 E0 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.559][I][nibe:835]: register 0xE1 answer: 05 E1 00 
+[15:15:09.560][I][nibe:586]: ex 00F5 @207807022 | rx 06 ACK | rx 000A 72[05 E1] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 E1 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.565][I][nibe:835]: register 0xE2 answer: 05 E2 0F 
+[15:15:09.579][I][nibe:586]: ex 00F5 @207823848 | rx 06 ACK | rx 000A 72[05 E2] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 E2 0F] | rx 06 ACK | rx 03 ETX
+[15:15:09.582][I][nibe:835]: register 0xE3 answer: 05 E3 64 
+[15:15:09.582][I][nibe:586]: ex 00F5 @207840674 | rx 06 ACK | rx 000A 72[05 E3] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 E3 64] | rx 06 ACK | rx 03 ETX
+[15:15:09.602][I][nibe:835]: register 0xE4 answer: 05 E4 4B 
+[15:15:09.608][I][nibe:586]: ex 00F5 @207857561 | rx 06 ACK | rx 000A 72[05 E4] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 E4 4B] | rx 06 ACK | rx 03 ETX
+[15:15:09.622][I][nibe:835]: register 0xE5 answer: 05 E5 14 
+[15:15:09.624][I][nibe:586]: ex 00F5 @207874393 | rx 06 ACK | rx 000A 72[05 E5] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 E5 14] | rx 06 ACK | rx 03 ETX
+[15:15:09.633][I][nibe:835]: register 0xE6 answer: 05 E6 05 
+[15:15:09.647][I][nibe:586]: ex 00F5 @207891368 | rx 06 ACK | rx 000A 72[05 E6] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 E6 05] | rx 06 ACK | rx 03 ETX
+[15:15:09.652][I][nibe:586]: ex 00F5 @207908256 | rx 05 ENQ | rx 06 ACK | rx 00F5 45[01] | rx 06 ACK | rx 03 ETX
+[15:15:09.667][I][nibe:835]: register 0xE7 answer: 05 E7 08 
+[15:15:09.672][I][nibe:586]: ex 00F5 @207917611 | rx 06 ACK | rx 000A 72[05 E7] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 E7 08] | rx 06 ACK | rx 03 ETX
+[15:15:09.672][I][nibe:835]: register 0xE8 answer: 05 E8 00 
+[15:15:09.692][I][nibe:586]: ex 00F5 @207934439 | rx 06 ACK | rx 000A 72[05 E8] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 E8 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.692][I][nibe:835]: register 0xE9 answer: 05 E9 00 
+[15:15:09.697][I][nibe:586]: ex 00F5 @207951357 | rx 06 ACK | rx 000A 72[05 E9] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 E9 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.711][I][nibe:835]: register 0xEA answer: 05 EA 00 
+[15:15:09.722][I][nibe:586]: ex 00F5 @207968233 | rx 06 ACK | rx 000A 72[05 EA] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 EA 00] | rx 06 ACK | rx 03 ETX
+[15:15:09.733][I][nibe:835]: register 0xEB answer: 05 EB 57 
+[15:15:09.739][I][nibe:586]: ex 00F5 @207985121 | rx 06 ACK | rx 000A 72[05 EB] | rx 05 ENQ | rx 06 ACK | rx 00F5 72[05 EB 57] | rx 06 ACK | rx 03 ETX
+[15:15:09.777][I][nibe:586]: ex 00F9 @208001963 | tx 06 ACK | rx 000A 40[] | tx 06 ACK | rx 03 ETX*
+[15:15:09.798][I][nibe:835]: register 0x4A answer: 01 
+[15:15:09.800][I][nibe:586]: ex 41C9 @208047503 | rx 06 ACK | rx 000A 72[05 4A] | rx 05 ENQ* | rx 06 ACK | rx 41C9 72[01] | rx 06 ACK | rx 03 ETX
+[15:15:09.822][I][nibe:835]: register 0x4B answer: 0A 
+[15:15:09.829][I][nibe:586]: ex 41C9 @208065224 | rx 06 ACK | rx 000A 72[05 4B] | rx 05 ENQ* | rx 06 ACK | rx 41C9 72[0A] | rx 06 ACK | rx 03 ETX
+[15:15:09.846][I][nibe:835]: register 0x4D answer: FF 
+[15:15:09.847][I][nibe:586]: ex 41C9 @208089300 | rx 06 ACK | rx 000A 72[05 4D] | rx 05 ENQ* | rx 06 ACK | rx 41C9 72[FF] | rx 06 ACK | rx 03 ETX
+[15:15:09.869][I][nibe:835]: register 0x4C answer: 07 
+[15:15:09.874][I][nibe:586]: ex 41C9 @208117238 | rx 06 ACK | rx 000A 72[05 4C] | rx 05 ENQ* | rx 06 ACK | rx 41C9 72[07] | rx 06 ACK | rx 03 ETX
+[15:15:09.895][I][nibe:835]: register 0x4E answer: 32 
+[15:15:09.895][I][nibe:586]: ex 41C9 @208141449 | rx 06 ACK | rx 000A 72[05 4E] | rx 05 ENQ* | rx 06 ACK | rx 41C9 72[32] | rx 06 ACK | rx 03 ETX
+[15:15:09.902][S][text_sensor]: 'F2025 status frame 0x72 (hex)' >> '32 '
+[15:15:10.439][W][nibe:720]: BAD frame cmd=F2 sender=000A len=3 @208700480 (+520245)
+[15:15:10.444][W][nibe:712]: anomaly: checksum failed -> hunting ETX @208700480 (+0)
+[15:15:10.445][W][rs485_bus:066]: recent wire (bytes, | = >2ms gap): 00 0A 02 05 4C 33 05^ 06 72 41 C9 01 07 FC 06 03 41^ C9^ 06|72 00 0A 02 05 4E 31 05^ 06 72 41 C9 01 32 C9 06 03 41^ C9^ 06|F2 00 0A 02 05 28 57 41^|C9^ 
+[15:15:10.630][I][nibe:586]: ex 41C9 @208165734 | rx 06 ACK | rx 03 ETX
+[15:15:10.631][I][nibe:835]: register 0x1F answer: 02 
+[15:15:10.631][I][nibe:586]: ex 41C9 @208850212 | rx 06 ACK | rx 000A 72[05 1F] | rx 05 ENQ* | rx 06 ACK | rx 41C9 72[02] | rx 06 ACK | rx 03 ETX
+[15:15:10.631][I][nibe:835]: register 0x50 answer: EC 
+[15:15:10.632][I][nibe:586]: ex 41C9 @208874925 | rx 06 ACK | rx 000A 72[05 50] | rx 05 ENQ* | rx 06 ACK | rx 41C9 72[EC] | rx 06 ACK | rx 03 ETX
+[15:15:10.643][I][nibe:835]: register 0x49 answer: 0B 
+[15:15:10.650][I][nibe:586]: ex 41C9 @208899834 | rx 06 ACK | rx 000A 72[05 49] | rx 05 ENQ* | rx 06 ACK | rx 41C9 72[0B] | rx 06 ACK | rx 03 ETX
+[15:15:10.666][I][nibe:835]: register 0x58 answer: 32 
+[15:15:10.687][I][nibe:586]: ex 41C9 @208924354 | rx 06 ACK | rx 000A 72[05 58] | rx 05 ENQ* | rx 06 ACK | rx 41C9 72[32] | rx 06 ACK | rx 03 ETX
+[15:15:10.707][I][nibe:835]: register 0x5A answer: 02 
+[15:15:10.716][I][nibe:586]: ex 41C9 @208950599 | rx 06 ACK | rx 000A 72[05 5A] | rx 05 ENQ* | rx 06 ACK | rx 41C9 72[02] | rx 06 ACK | rx 03 ETX
+[15:15:10.716][S][text_sensor]: 'F2025 status frame 0x72 (hex)' >> '02 '
+[15:15:10.732][I][nibe:586]: ex 41C9 @208976403 | rx 06 ACK | rx 000A 76[05 4A 01] | rx 06 ACK | rx 03 ETX*
+[15:15:11.345][I][nibe:586]: ex 41C9 @209515492 | rx 06 ACK | rx 000A 76[05 4B 0A] | rx 06 ACK | rx 03 ETX*
+[15:15:11.798][I][nibe:586]: ex 41C9 @210051691 | rx 06 ACK | rx 000A 76[05 4D FF] | rx 06 ACK | rx 03 ETX*
+[15:15:12.165][I][nibe:977]: bus: frames ok=2386 bad=1 polls_own=2853 other=737 tx=4105 txref=11 replydrop=0 gaps=0 echoes=0 anomalies=4 wire_drop=0
+[15:15:12.171][I][nibe:980]: bus health: frm_err=0 par_err=14482 gl=2 min_rx_delta=520 us
+[15:15:12.225][S][sensor]: 'Frames OK' >> 2386 
+[15:15:12.226][S][sensor]: 'Frames bad checksum' >> 1 
+[15:15:12.226][S][sensor]: 'Polls to display' >> 2853 
+[15:15:12.227][S][sensor]: 'Anomalies' >> 4 
+[15:15:12.324][I][nibe:586]: ex 41C9 @210592216 | rx 06 ACK | rx 000A 76[05 4C 07] | rx 06 ACK | rx 03 ETX*
+[15:15:12.872][I][nibe:586]: ex 41C9 @211122691 | rx 06 ACK | rx 000A 76[05 4E 32] | rx 06 ACK | rx 03 ETX*
+[15:15:13.496][I][nibe:586]: ex 41C9 @211659972 | rx 06 ACK | rx 000A 76[05 28 14] | rx 06 ACK | rx 03 ETX*
+[15:15:13.929][I][nibe:586]: ex 41C9 @212197983 | rx 06 ACK | rx 000A 76[05 1F 02] | rx 06 ACK | rx 03 ETX*
+[15:15:14.622][I][nibe:586]: ex 41C9 @212729170 | rx 06 ACK | rx 000A 76[05 50 EC] | rx 06 ACK | rx 03 ETX*
+[15:15:14.863][S][binary_sensor]: 'Display polled' >> OFF
+[15:15:15.124][I][nibe:586]: ex 41C9 @213374438 | rx 06 ACK | rx 000A 76[05 49 0B] | rx 06 ACK | rx 03 ETX*
+[15:15:15.749][I][nibe:586]: ex 41C9 @213912543 | rx 06 ACK | rx 000A 76[05 58 32] | rx 06 ACK | rx 03 ETX*
+[15:15:16.192][I][nibe:586]: ex 41C9 @214444712 | rx 06 ACK | rx 000A 76[05 5A 02] | rx 06 ACK | rx 03 ETX*
+[15:15:16.773][I][nibe:586]: ex 41C9 @214985083 | rx 06 ACK | rx 000A EE[] | rx 05 ENQ* | rx 06 ACK | rx 41C9 EE[00 78] | rx 06 ACK | rx 03 ETX
+[15:15:16.778][I][nibe:586]: ex 41C9 @215008643 | rx 06 ACK | rx 000A 22[] | rx 06 ACK | rx 03 ETX*
+[15:15:16.779][I][nibe:857]: master 0x62 menu request: queueing reply
+[15:15:16.790][I][nibe:586]: ex 00F9 @215030198 | tx 06 ACK | rx 000A 62[] | tx 06 ACK | rx 03 ETX*
+[15:15:16.860][S][binary_sensor]: 'Display polled' >> ON
+[15:15:17.330][I][nibe:586]: ex 00F9 @215581415 | tx 05 ENQ* | rx 06 ACK* | tx 00F9 62[0F] | rx 06 ACK | tx 03 ETX
+[15:15:17.383][I][nibe:586]: ex 00F9 @215603346 | tx 06 ACK | rx 000A 35[] | tx 06 ACK | rx 03 ETX*
+[15:15:17.437][I][nibe:586]: ex 00F9 @215652273 | tx 06 ACK | rx 000A 33[] | tx 06 ACK | rx 03 ETX*
+[15:15:17.486][I][nibe:586]: ex 00F9 @215704306 | tx 06 ACK | rx 000A 63[0F] | tx 06 ACK | rx 03 ETX*
+[15:15:21.761][I][nibe:586]: ex 00F9 @219994554 | tx 06 ACK | rx 000A 50[00 00 00] | tx 06 ACK | rx 03 ETX*
+[15:15:21.776][I][nibe:586]: ex 00F5 @220040400 | rx 06 ACK | rx 000A 76[05 5F 6F] | rx 06 ACK | rx 03 ETX*
+[15:15:21.795][I][nibe:586]: ex 00F5 @220053679 | rx 06 ACK | rx 000A 76[05 60 E5] | rx 06 ACK | rx 03 ETX*
+[15:15:21.814][I][nibe:586]: ex 00F5 @220066971 | rx 06 ACK | rx 000A 76[05 61 D7] | rx 06 ACK | rx 03 ETX*
+[15:15:21.819][I][nibe:586]: ex 00F5 @220080272 | rx 06 ACK | rx 000A 76[05 62 00] | rx 06 ACK | rx 03 ETX*
+[15:15:21.835][S][text_sensor]: 'Display row 1 (symbols, hex)' >> '00 00 00 '
+[15:15:21.872][I][nibe:586]: ex 00F9 @220093541 | tx 06 ACK | rx 000A 72[05 40] | tx 06 ACK | rx 03 ETX*
+[15:15:21.921][I][nibe:586]: ex 00F9 @220139465 | tx 06 ACK | rx 000A 72[05 41] | tx 06 ACK | rx 03 ETX*
+[15:15:21.976][I][nibe:586]: ex 00F9 @220191469 | tx 06 ACK | rx 000A 72[05 42] | tx 06 ACK | rx 03 ETX*
+[15:15:22.028][I][nibe:586]: ex 00F9 @220243415 | tx 06 ACK | rx 000A 72[05 43] | tx 06 ACK | rx 03 ETX*
+[15:15:22.076][I][nibe:586]: ex 00F9 @220295664 | tx 06 ACK | rx 000A 72[05 44] | tx 06 ACK | rx 03 ETX*
+[15:15:22.130][I][nibe:586]: ex 00F9 @220346329 | tx 06 ACK | rx 000A 72[05 45] | tx 06 ACK | rx 03 ETX*
+[15:15:22.131][I][nibe:977]: bus: frames ok=2412 bad=1 polls_own=2866 other=768 tx=4131 txref=24 replydrop=0 gaps=0 echoes=0 anomalies=4 wire_drop=0
+[15:15:22.131][I][nibe:980]: bus health: frm_err=0 par_err=14646 gl=2 min_rx_delta=520 us
+[15:15:22.172][I][nibe:586]: ex 00F9 @220398417 | tx 06 ACK | rx 000A 72[05 46] | tx 06 ACK | rx 03 ETX*
+[15:15:22.225][I][nibe:586]: ex 00F9 @220441971 | tx 06 ACK | rx 000A 72[05 47] | tx 06 ACK | rx 03 ETX*
+[15:15:22.244][S][sensor]: 'Frames OK' >> 2412 
+[15:15:22.244][S][sensor]: 'Frames bad checksum' >> 1 
+[15:15:22.245][S][sensor]: 'Polls to display' >> 2866 
+[15:15:22.245][S][sensor]: 'Anomalies' >> 4 
+[15:15:22.280][I][nibe:586]: ex 00F9 @220494671 | tx 06 ACK | rx 000A 72[05 48] | tx 06 ACK | rx 03 ETX*
+[15:15:22.335][I][nibe:586]: ex 00F9 @220548484 | tx 06 ACK | rx 000A 72[05 49] | tx 06 ACK | rx 03 ETX*
+[15:15:22.384][I][nibe:586]: ex 00F9 @220602417 | tx 06 ACK | rx 000A 72[05 4A] | tx 06 ACK | rx 03 ETX*
+[15:15:22.442][I][nibe:586]: ex 00F9 @220653426 | tx 06 ACK | rx 000A 72[05 4B] | tx 06 ACK | rx 03 ETX*
+[15:15:22.487][I][nibe:586]: ex 00F9 @220705775 | tx 06 ACK | rx 000A 72[05 4C] | tx 06 ACK | rx 03 ETX*
+[15:15:22.538][I][nibe:586]: ex 00F9 @220756321 | tx 06 ACK | rx 000A 72[05 4D] | tx 06 ACK | rx 03 ETX*
+[15:15:22.590][I][nibe:586]: ex 00F9 @220807405 | tx 06 ACK | rx 000A 72[05 4E] | tx 06 ACK | rx 03 ETX*
+[15:15:22.642][I][nibe:586]: ex 00F9 @220859416 | tx 06 ACK | rx 000A 72[05 4F] | tx 06 ACK | rx 03 ETX*
+[15:15:22.696][I][nibe:586]: ex 00F9 @220911661 | tx 06 ACK | rx 000A 72[05 50] | tx 06 ACK | rx 03 ETX*
+[15:15:22.745][I][nibe:586]: ex 00F9 @220962336 | tx 06 ACK | rx 000A 72[05 51] | tx 06 ACK | rx 03 ETX*
+[15:15:22.795][I][nibe:586]: ex 00F9 @221014424 | tx 06 ACK | rx 000A 72[05 52] | tx 06 ACK | rx 03 ETX*
+[15:15:22.849][I][nibe:586]: ex 00F9 @221065437 | tx 06 ACK | rx 000A 72[05 53] | tx 06 ACK | rx 03 ETX*
+[15:15:22.884][I][nibe:586]: ex 00F9 @221117663 | tx 06 ACK | rx 000A 72[05 54] | tx 06 ACK | rx 03 ETX*
+[15:15:22.935][I][nibe:586]: ex 00F9 @221165390 | tx 06 ACK | rx 000A 72[05 55] | tx 06 ACK | rx 03 ETX*
+[15:15:22.988][I][nibe:586]: ex 00F9 @221205448 | tx 06 ACK | rx 000A 72[05 56] | tx 06 ACK | rx 03 ETX*
+[15:15:23.039][I][nibe:586]: ex 00F9 @221257426 | tx 06 ACK | rx 000A 72[05 57] | tx 06 ACK | rx 03 ETX*
+[15:15:23.138][I][nibe:586]: ex 00F9 @221309640 | tx 06 ACK | rx 000A 72[05 58] | tx 06 ACK | rx 03 ETX*
+[15:15:23.147][I][nibe:586]: ex 00F9 @221360321 | tx 06 ACK | rx 000A 72[05 59] | tx 06 ACK | rx 03 ETX*
+[15:15:23.192][I][nibe:586]: ex 00F9 @221411389 | tx 06 ACK | rx 000A 72[05 5A] | tx 06 ACK | rx 03 ETX*
+[15:15:23.245][I][nibe:586]: ex 00F9 @221462427 | tx 06 ACK | rx 000A 72[05 5B] | tx 06 ACK | rx 03 ETX*
+[15:15:23.297][I][nibe:586]: ex 00F9 @221514633 | tx 06 ACK | rx 000A 72[05 5C] | tx 06 ACK | rx 03 ETX*
+[15:15:23.349][I][nibe:586]: ex 00F9 @221567463 | tx 06 ACK | rx 000A 72[05 5D] | tx 06 ACK | rx 03 ETX*
+[15:15:23.400][I][nibe:586]: ex 00F9 @221618733 | tx 06 ACK | rx 000A 72[05 5E] | tx 06 ACK | rx 03 ETX*
+[15:15:23.453][I][nibe:586]: ex 00F9 @221670428 | tx 06 ACK | rx 000A 72[05 5F] | tx 06 ACK | rx 03 ETX*
+[15:15:23.503][I][nibe:586]: ex 00F9 @221722671 | tx 06 ACK | rx 000A 72[05 60] | tx 06 ACK | rx 03 ETX*
+[15:15:23.556][I][nibe:586]: ex 00F9 @221773455 | tx 06 ACK | rx 000A 72[05 61] | tx 06 ACK | rx 03 ETX*
+[15:15:23.609][I][nibe:586]: ex 00F9 @221825411 | tx 06 ACK | rx 000A 72[05 62] | tx 06 ACK | rx 03 ETX*
+[15:15:23.660][I][nibe:586]: ex 00F9 @221877435 | tx 06 ACK | rx 000A 72[05 63] | tx 06 ACK | rx 03 ETX*
+[15:15:23.712][I][nibe:586]: ex 00F9 @221929664 | tx 06 ACK | rx 000A 72[05 64] | tx 06 ACK | rx 03 ETX*
+[15:15:23.764][I][nibe:586]: ex 00F9 @221981324 | tx 06 ACK | rx 000A 72[05 65] | tx 06 ACK | rx 03 ETX*
+[15:15:23.815][I][nibe:586]: ex 00F9 @222033412 | tx 06 ACK | rx 000A 72[05 66] | tx 06 ACK | rx 03 ETX*
+[15:15:23.868][I][nibe:586]: ex 00F9 @222085558 | tx 06 ACK | rx 000A 72[05 67] | tx 06 ACK | rx 03 ETX*
+[15:15:23.913][I][nibe:586]: ex 00F9 @222137655 | tx 06 ACK | rx 000A 72[05 68] | tx 06 ACK | rx 03 ETX*
+[15:15:23.954][I][nibe:586]: ex 00F9 @222189377 | tx 06 ACK | rx 000A 72[05 69] | tx 06 ACK | rx 03 ETX*
+[15:15:24.007][I][nibe:586]: ex 00F9 @222224542 | tx 06 ACK | rx 000A 72[05 6A] | tx 06 ACK | rx 03 ETX*
+[15:15:24.057][I][nibe:586]: ex 00F9 @222276430 | tx 06 ACK | rx 000A 72[05 6B] | tx 06 ACK | rx 03 ETX*
+[15:15:24.110][I][nibe:586]: ex 00F9 @222327639 | tx 06 ACK | rx 000A 72[05 6C] | tx 06 ACK | rx 03 ETX*
+[15:15:24.161][I][nibe:586]: ex 00F9 @222379328 | tx 06 ACK | rx 000A 72[05 6D] | tx 06 ACK | rx 03 ETX*
+[15:15:24.215][I][nibe:586]: ex 00F9 @222431377 | tx 06 ACK | rx 000A 72[05 6E] | tx 06 ACK | rx 03 ETX*
+[15:15:24.266][I][nibe:586]: ex 00F9 @222483417 | tx 06 ACK | rx 000A 72[05 6F] | tx 06 ACK | rx 03 ETX*
+[15:15:24.319][I][nibe:586]: ex 00F9 @222534636 | tx 06 ACK | rx 000A 72[05 70] | tx 06 ACK | rx 03 ETX*
+[15:15:24.367][I][nibe:586]: ex 00F9 @222586328 | tx 06 ACK | rx 000A 72[05 71] | tx 06 ACK | rx 03 ETX*
+[15:15:24.420][I][nibe:586]: ex 00F9 @222637392 | tx 06 ACK | rx 000A 72[05 72] | tx 06 ACK | rx 03 ETX*
+[15:15:24.471][I][nibe:586]: ex 00F9 @222689474 | tx 06 ACK | rx 000A 72[05 73] | tx 06 ACK | rx 03 ETX*
+[15:15:24.524][I][nibe:586]: ex 00F9 @222741635 | tx 06 ACK | rx 000A 72[05 74] | tx 06 ACK | rx 03 ETX*
+[15:15:24.575][I][nibe:586]: ex 00F9 @222793325 | tx 06 ACK | rx 000A 72[05 75] | tx 06 ACK | rx 03 ETX*
+[15:15:24.628][I][nibe:586]: ex 00F9 @222845387 | tx 06 ACK | rx 000A 72[05 76] | tx 06 ACK | rx 03 ETX*
+[15:15:24.679][I][nibe:586]: ex 00F9 @222897455 | tx 06 ACK | rx 000A 72[05 77] | tx 06 ACK | rx 03 ETX*
+[15:15:24.736][I][nibe:586]: ex 00F9 @222949727 | tx 06 ACK | rx 000A 72[05 78] | tx 06 ACK | rx 03 ETX*
+[15:15:24.784][I][nibe:586]: ex 00F9 @223001326 | tx 06 ACK | rx 000A 72[05 79] | tx 06 ACK | rx 03 ETX*
+[15:15:24.840][I][nibe:586]: ex 00F9 @223053417 | tx 06 ACK | rx 000A 72[05 7A] | tx 06 ACK | rx 03 ETX*
+[15:15:24.891][I][nibe:586]: ex 00F9 @223105427 | tx 06 ACK | rx 000A 72[05 7B] | tx 06 ACK | rx 03 ETX*
+[15:15:24.940][I][nibe:586]: ex 00F9 @223156672 | tx 06 ACK | rx 000A 72[05 7C] | tx 06 ACK | rx 03 ETX*
+[15:15:24.992][I][nibe:586]: ex 00F9 @223208377 | tx 06 ACK | rx 000A 72[05 7D] | tx 06 ACK | rx 03 ETX*
+[15:15:25.039][I][nibe:586]: ex 00F9 @223257571 | tx 06 ACK | rx 000A 72[05 7E] | tx 06 ACK | rx 03 ETX*
+[15:15:25.092][I][nibe:586]: ex 00F9 @223309421 | tx 06 ACK | rx 000A 72[05 7F] | tx 06 ACK | rx 03 ETX*
+[15:15:25.143][I][nibe:586]: ex 00F9 @223361666 | tx 06 ACK | rx 000A 72[05 80] | tx 06 ACK | rx 03 ETX*
+[15:15:25.196][I][nibe:586]: ex 00F9 @223413336 | tx 06 ACK | rx 000A 72[05 81] | tx 06 ACK | rx 03 ETX*
+[15:15:25.247][I][nibe:586]: ex 00F9 @223465427 | tx 06 ACK | rx 000A 72[05 82] | tx 06 ACK | rx 03 ETX*
+[15:15:25.301][I][nibe:586]: ex 00F9 @223517422 | tx 06 ACK | rx 000A 72[05 83] | tx 06 ACK | rx 03 ETX*
+[15:15:25.352][I][nibe:586]: ex 00F9 @223570759 | tx 06 ACK | rx 000A 72[05 84] | tx 06 ACK | rx 03 ETX*
+[15:15:25.408][I][nibe:586]: ex 00F9 @223622328 | tx 06 ACK | rx 000A 72[05 85] | tx 06 ACK | rx 03 ETX*
+[15:15:25.456][I][nibe:586]: ex 00F9 @223674513 | tx 06 ACK | rx 000A 72[05 86] | tx 06 ACK | rx 03 ETX*
+[15:15:25.506][I][nibe:586]: ex 00F9 @223725423 | tx 06 ACK | rx 000A 72[05 87] | tx 06 ACK | rx 03 ETX*
+[15:15:25.559][I][nibe:586]: ex 00F9 @223776687 | tx 06 ACK | rx 000A 72[05 88] | tx 06 ACK | rx 03 ETX*
+[15:15:25.612][I][nibe:586]: ex 00F9 @223828330 | tx 06 ACK | rx 000A 72[05 89] | tx 06 ACK | rx 03 ETX*
+[15:15:25.666][I][nibe:586]: ex 00F9 @223880419 | tx 06 ACK | rx 000A 72[05 8A] | tx 06 ACK | rx 03 ETX*
+[15:15:25.713][I][nibe:586]: ex 00F9 @223931418 | tx 06 ACK | rx 000A 72[05 8B] | tx 06 ACK | rx 03 ETX*
+[15:15:25.766][I][nibe:586]: ex 00F9 @223983661 | tx 06 ACK | rx 000A 72[05 8C] | tx 06 ACK | rx 03 ETX*
+[15:15:25.819][I][nibe:586]: ex 00F9 @224035324 | tx 06 ACK | rx 000A 72[05 8D] | tx 06 ACK | rx 03 ETX*
+[15:15:25.869][I][nibe:586]: ex 00F9 @224087418 | tx 06 ACK | rx 000A 72[05 8E] | tx 06 ACK | rx 03 ETX*
+[15:15:25.921][I][nibe:586]: ex 00F9 @224138415 | tx 06 ACK | rx 000A 72[05 8F] | tx 06 ACK | rx 03 ETX*
+[15:15:25.972][I][nibe:586]: ex 00F9 @224189730 | tx 06 ACK | rx 000A 72[05 90] | tx 06 ACK | rx 03 ETX*
+[15:15:26.024][I][nibe:586]: ex 00F9 @224240319 | tx 06 ACK | rx 000A 72[05 91] | tx 06 ACK | rx 03 ETX*
+[15:15:26.077][I][nibe:586]: ex 00F9 @224294537 | tx 06 ACK | rx 000A 72[05 92] | tx 06 ACK | rx 03 ETX*
+[15:15:26.128][I][nibe:586]: ex 00F9 @224346426 | tx 06 ACK | rx 000A 72[05 93] | tx 06 ACK | rx 03 ETX*
+[15:15:26.181][I][nibe:586]: ex 00F9 @224398668 | tx 06 ACK | rx 000A 72[05 94] | tx 06 ACK | rx 03 ETX*
+[15:15:26.233][I][nibe:586]: ex 00F9 @224450405 | tx 06 ACK | rx 000A 72[05 95] | tx 06 ACK | rx 03 ETX*
+[15:15:26.288][I][nibe:586]: ex 00F9 @224502397 | tx 06 ACK | rx 000A 72[05 96] | tx 06 ACK | rx 03 ETX*
+[15:15:26.338][I][nibe:586]: ex 00F9 @224554420 | tx 06 ACK | rx 000A 72[05 97] | tx 06 ACK | rx 03 ETX*
+[15:15:26.391][I][nibe:586]: ex 00F9 @224608646 | tx 06 ACK | rx 000A 72[05 98] | tx 06 ACK | rx 03 ETX*
+[15:15:26.442][I][nibe:586]: ex 00F9 @224660322 | tx 06 ACK | rx 000A 72[05 99] | tx 06 ACK | rx 03 ETX*
+[15:15:26.495][I][nibe:586]: ex 00F9 @224712397 | tx 06 ACK | rx 000A 72[05 9A] | tx 06 ACK | rx 03 ETX*
+[15:15:26.546][I][nibe:586]: ex 00F9 @224764591 | tx 06 ACK | rx 000A 72[05 9B] | tx 06 ACK | rx 03 ETX*
+[15:15:26.599][I][nibe:586]: ex 00F9 @224816637 | tx 06 ACK | rx 000A 72[05 9C] | tx 06 ACK | rx 03 ETX*
+[15:15:26.650][I][nibe:586]: ex 00F9 @224868339 | tx 06 ACK | rx 000A 72[05 9D] | tx 06 ACK | rx 03 ETX*
+[15:15:26.704][I][nibe:586]: ex 00F9 @224920385 | tx 06 ACK | rx 000A 72[05 9E] | tx 06 ACK | rx 03 ETX*
+[15:15:26.754][I][nibe:586]: ex 00F9 @224972437 | tx 06 ACK | rx 000A 72[05 9F] | tx 06 ACK | rx 03 ETX*
+[15:15:26.809][I][nibe:586]: ex 00F9 @225024633 | tx 06 ACK | rx 000A 72[05 A0] | tx 06 ACK | rx 03 ETX*
+[15:15:26.858][I][nibe:586]: ex 00F9 @225076336 | tx 06 ACK | rx 000A 72[05 A1] | tx 06 ACK | rx 03 ETX*
+[15:15:26.911][I][nibe:586]: ex 00F9 @225128383 | tx 06 ACK | rx 000A 72[05 A2] | tx 06 ACK | rx 03 ETX*
+[15:15:26.962][I][nibe:586]: ex 00F9 @225180432 | tx 06 ACK | rx 000A 72[05 A3] | tx 06 ACK | rx 03 ETX*
+[15:15:27.015][I][nibe:586]: ex 00F9 @225232637 | tx 06 ACK | rx 000A 72[05 A4] | tx 06 ACK | rx 03 ETX*
+[15:15:27.070][I][nibe:586]: ex 00F9 @225284328 | tx 06 ACK | rx 000A 72[05 A5] | tx 06 ACK | rx 03 ETX*
+[15:15:27.118][I][nibe:586]: ex 00F9 @225336393 | tx 06 ACK | rx 000A 72[05 A6] | tx 06 ACK | rx 03 ETX*
+[15:15:27.172][I][nibe:586]: ex 00F9 @225387419 | tx 06 ACK | rx 000A 72[05 A7] | tx 06 ACK | rx 03 ETX*
+[15:15:27.220][I][nibe:586]: ex 00F9 @225438721 | tx 06 ACK | rx 000A 72[05 A8] | tx 06 ACK | rx 03 ETX*
+[15:15:27.274][I][nibe:586]: ex 00F9 @225489325 | tx 06 ACK | rx 000A 72[05 A9] | tx 06 ACK | rx 03 ETX*
+[15:15:27.324][I][nibe:586]: ex 00F9 @225541391 | tx 06 ACK | rx 000A 72[05 AA] | tx 06 ACK | rx 03 ETX*
+[15:15:27.377][I][nibe:586]: ex 00F9 @225593428 | tx 06 ACK | rx 000A 72[05 AB] | tx 06 ACK | rx 03 ETX*
+[15:15:27.427][I][nibe:586]: ex 00F9 @225645641 | tx 06 ACK | rx 000A 72[05 AC] | tx 06 ACK | rx 03 ETX*
+[15:15:27.479][I][nibe:586]: ex 00F9 @225696377 | tx 06 ACK | rx 000A 72[05 AD] | tx 06 ACK | rx 03 ETX*
+[15:15:27.530][I][nibe:586]: ex 00F9 @225748382 | tx 06 ACK | rx 000A 72[05 AE] | tx 06 ACK | rx 03 ETX*
+[15:15:27.582][I][nibe:586]: ex 00F9 @225799410 | tx 06 ACK | rx 000A 72[05 AF] | tx 06 ACK | rx 03 ETX*
+[15:15:27.634][I][nibe:586]: ex 00F9 @225851629 | tx 06 ACK | rx 000A 72[05 B0] | tx 06 ACK | rx 03 ETX*
+[15:15:27.686][I][nibe:586]: ex 00F9 @225903322 | tx 06 ACK | rx 000A 72[05 B1] | tx 06 ACK | rx 03 ETX*
+[15:15:27.744][I][nibe:586]: ex 00F9 @225955381 | tx 06 ACK | rx 000A 72[05 B2] | tx 06 ACK | rx 03 ETX*
+[15:15:27.789][I][nibe:586]: ex 00F9 @226007421 | tx 06 ACK | rx 000A 72[05 B3] | tx 06 ACK | rx 03 ETX*
+[15:15:27.846][I][nibe:586]: ex 00F9 @226058636 | tx 06 ACK | rx 000A 72[05 B4] | tx 06 ACK | rx 03 ETX*
+[15:15:27.890][I][nibe:586]: ex 00F9 @226109462 | tx 06 ACK | rx 000A 72[05 B5] | tx 06 ACK | rx 03 ETX*
+[15:15:27.949][I][nibe:586]: ex 00F9 @226160382 | tx 06 ACK | rx 000A 72[05 B6] | tx 06 ACK | rx 03 ETX*
+[15:15:27.994][I][nibe:586]: ex 00F9 @226212483 | tx 06 ACK | rx 000A 72[05 B7] | tx 06 ACK | rx 03 ETX*
+[15:15:28.041][I][nibe:586]: ex 00F9 @226263653 | tx 06 ACK | rx 000A 72[05 B8] | tx 06 ACK | rx 03 ETX*
+[15:15:28.089][I][nibe:586]: ex 00F9 @226306489 | tx 06 ACK | rx 000A 72[05 B9] | tx 06 ACK | rx 03 ETX*
+[15:15:28.145][I][nibe:586]: ex 00F9 @226358387 | tx 06 ACK | rx 000A 72[05 BA] | tx 06 ACK | rx 03 ETX*
+[15:15:28.197][I][nibe:586]: ex 00F9 @226410421 | tx 06 ACK | rx 000A 72[05 BB] | tx 06 ACK | rx 03 ETX*
