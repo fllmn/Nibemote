@@ -10,9 +10,10 @@ the VVM300 side of the legacy Nibe bus protocol (docs/protocol.md):
     close exchange : 03 ETX (sent by the frame's sender)
 
 Exchange semantics per the protocol notes:
-  - content lands ONLY in bare-ACK slots (protocol.md "The display
-    slot") — the governor requests in bursts of 2 polls then answers 2
-    polls with bare ACK
+  - the governor requests in bursts of 2 polls then answers 2 polls with bare
+    ACK, and in this scenario content lands in those bare-ACK slots — the
+    rhythm is emulator policy, asserted here so a refactor keeps the wire
+    shape (hypotheses.md 1)
   - after the grant-ACK the node sends its frame; the master receipt-ACKs it;
     only then does the node send its ETX (sender-closes — protocol.md)
   - master->display frames ARE receipt-ACKed by the display (asymmetric)
