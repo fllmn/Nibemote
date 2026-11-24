@@ -63,3 +63,8 @@ _Avoid_: error, rejection
 **Our slot**:
 The exchanges in which the master polls the panel's address.
 _Avoid_: display slot, our turn
+
+**Screen state**:
+What the panel is showing: the three text rows, the row-1 symbol strip, and the knob's
+placement.
+_Avoid_: display state, UI state, snapshot

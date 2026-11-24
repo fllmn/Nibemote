@@ -92,9 +92,9 @@ static void json_str_(std::string &out, const char *text) {
 
 // Builds the JSON state snapshot served at /j (polled by the page script).
 std::string NibeBus::build_display_json_() {
-  std::string row2 = this->snap_rows_[0];
-  std::string row3 = this->snap_rows_[1];
-  std::string row4 = this->snap_rows_[2];
+  std::string row2 = this->screen_.row(2);
+  std::string row3 = this->screen_.row(3);
+  std::string row4 = this->screen_.row(4);
   auto trim = [](const std::string &s) -> std::string {
     size_t a = s.find_first_not_of(' ');
     if (a == std::string::npos)
@@ -126,13 +126,13 @@ std::string NibeBus::build_display_json_() {
   json_str_(out, r4r.c_str());
   out += ",\"hx\":\"";
   char hex[8];
-  for (uint8_t i = 0; i < this->sym_raw_len_; i++) {
-    snprintf(hex, sizeof(hex), "%s%02X", i ? " " : "", (unsigned) this->sym_raw_[i]);
+  for (uint8_t i = 0; i < this->screen_.symbols_len(); i++) {
+    snprintf(hex, sizeof(hex), "%s%02X", i ? " " : "", (unsigned) this->screen_.symbol(i));
     out += hex;
   }
   out += "\"";
   char buf[16];
-  snprintf(buf, sizeof(buf), ",\"k\":%u}", (unsigned) this->knob_pos_);
+  snprintf(buf, sizeof(buf), ",\"k\":%u}", (unsigned) this->screen_.knob());
   out += buf;
   return out;
 }
@@ -146,13 +146,13 @@ std::string NibeBus::build_display_page_() {
     size_t b = s.find_last_not_of(' ');
     return s.substr(a, b - a + 1);
   };
-  std::string row2 = trim(this->snap_rows_[0]);
-  std::string row3 = trim(this->snap_rows_[1]);
-  std::string row4 = this->snap_rows_[2];
+  std::string row2 = trim(this->screen_.row(2));
+  std::string row3 = trim(this->screen_.row(3));
+  std::string row4 = this->screen_.row(4);
 
   // symbol strip state (see WEB_BITS for the mapping)
   auto bit_on = [this](uint8_t byte, uint8_t mask) -> bool {
-    return this->sym_raw_len_ > byte && (this->sym_raw_[byte] & mask);
+    return this->screen_.symbols_len() > byte && (this->screen_.symbol(byte) & mask);
   };
   bool comp_on = bit_on(0, 0x80);
   bool comp_a = bit_on(0, 0x40);
@@ -278,7 +278,7 @@ std::string NibeBus::build_display_page_() {
   // ---- button bank: col 1 placeholders, col 2 knob, col 3 plus/minus/enter (fetch() actions) ----
   // knob dial: vertical at 127; one detent (12 placements) = 9 degrees — 10 detents = +/-90 degrees
   char rot[48];
-  int knob_deg = (int) this->knob_pos_ - 127;
+  int knob_deg = (int) this->screen_.knob() - 127;
   knob_deg = knob_deg * 3 / 4;
   snprintf(rot, sizeof(rot), "\"transform:rotate(%ddeg)\"", knob_deg);
   page += "<div class=bank>"
@@ -305,12 +305,12 @@ std::string NibeBus::build_display_page_() {
   page += "<div class=hex>symbol strip raw: <b id=hx>";
 
   // raw bytes
-  if (this->sym_raw_len_ == 0) {
+  if (this->screen_.symbols_len() == 0) {
     page += "-- no display data yet --";
   } else {
     char hex[8];
-    for (uint8_t i = 0; i < this->sym_raw_len_; i++) {
-      snprintf(hex, sizeof(hex), "%s%02X", i ? " " : "", (unsigned) this->sym_raw_[i]);
+    for (uint8_t i = 0; i < this->screen_.symbols_len(); i++) {
+      snprintf(hex, sizeof(hex), "%s%02X", i ? " " : "", (unsigned) this->screen_.symbol(i));
       page += hex;
     }
   }
@@ -320,7 +320,7 @@ std::string NibeBus::build_display_page_() {
   page += "<table>";
   char buf[64];
   for (const auto &b : WEB_BITS) {
-    bool on = this->sym_raw_len_ > b.byte && ((this->sym_raw_[b.byte] >> b.bit) & 1);
+    bool on = this->screen_.symbols_len() > b.byte && ((this->screen_.symbol(b.byte) >> b.bit) & 1);
     bool confirmed_unmapped = !b.confirmed && b.label[0] == '?';
     snprintf(buf, sizeof(buf), "<tr class=%s data-b='%u.%u'><td class=bit>b%u.%u</td><td", on ? "on" : "off",
              (unsigned) b.byte, (unsigned) b.bit, (unsigned) b.byte, (unsigned) b.bit);
@@ -384,11 +384,11 @@ void NibeBus::web_handle_action_(const std::string &action) {
     ESP_LOGI(TAG, "display-web: enter");
     this->queue_key(WEB_KEY_ENTER);
   } else if (action == "kl") {  // knob one detent counter-clockwise
-    uint8_t pos = this->knob_pos_ > WEB_KNOB_STEP ? this->knob_pos_ - WEB_KNOB_STEP : 0;
+    uint8_t pos = this->screen_.knob() > WEB_KNOB_STEP ? this->screen_.knob() - WEB_KNOB_STEP : 0;
     ESP_LOGI(TAG, "display-web: knob left -> %u", (unsigned) pos);
     this->set_knob_placement(pos);
   } else if (action == "kr") {  // knob one detent clockwise
-    uint8_t pos = this->knob_pos_ < 255 - WEB_KNOB_STEP ? this->knob_pos_ + WEB_KNOB_STEP : 255;
+    uint8_t pos = this->screen_.knob() < 255 - WEB_KNOB_STEP ? this->screen_.knob() + WEB_KNOB_STEP : 255;
     ESP_LOGI(TAG, "display-web: knob right -> %u", (unsigned) pos);
     this->set_knob_placement(pos);
   } else if (action == "b1" || action == "b2" || action == "b3") {

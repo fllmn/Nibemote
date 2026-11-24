@@ -286,7 +286,7 @@ void IRAM_ATTR NibeBus::arm_reply_(uint8_t kind, uint8_t ctrl_var, uint32_t ts, 
 
 // consumer-side request purge: pops what at_poll_lo_ only peeks (txq_tail_ stays single-writer: tick/loop only)
 void IRAM_ATTR NibeBus::purge_stale_requests_() {
-  if (!this->emulating() || this->rows_seen_ == 0)
+  if (!this->emulating() || !this->screen_.any())
     return;
   uint32_t h = q_load_(&this->txq_head_);
   uint32_t t = q_load_(&this->txq_tail_);
@@ -373,7 +373,7 @@ void NibeBus::setup() {
 uint32_t NibeBus::live_tail_() {
   // once content is complete, requests are dead weight: look past them (the ISR purges them for real)
   uint32_t t = q_load_(&this->txq_tail_);
-  if (this->rows_seen_ != 0) {
+  if (this->screen_.any()) {
     uint32_t h = q_load_(&this->txq_head_);
     while (t != h && this->tx_queue_[t % TX_QUEUE_N].repeatable)
       t = (t + 1) % (2 * TX_QUEUE_N);
@@ -459,7 +459,7 @@ bool NibeBus::trigger_announce() {
   if (!this->emulating())
     return false;
   // fresh request cycle after re-arm: the repeat pump re-runs until the first content row
-  this->rows_seen_ = 0;
+  this->screen_.reset_rows();
   this->content_query_.arm();
   this->scheduler_.reset_governor();
   this->refill_queries_();
@@ -616,16 +616,7 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
   if (sender == ADDR_VVM300 && in_our_slot && cmd >= CMD_ROW_BASE && cmd <= CMD_ROW_BASE + 3) {
     uint8_t row = cmd - CMD_ROW_BASE + 1;
     if (row >= 2) {  // rows 2..4: latin-1 text, NUL padded
-      bool first_content = (this->rows_seen_ == 0);
-      this->rows_seen_ |= (uint8_t) (1u << (row - 2));
-      if (first_content) {
-        // the repeat phase ends at the FIRST content row (protocol.md "The display slot")
-        this->content_query_.disarm();  // queued requests pop at the next poll
-        ESP_LOGI(TAG, "first content row (row %u) received: request pump off", row);
-      }
-      if (this->rows_complete_()) {
-        ESP_LOGI(TAG, "rows 2-4 received: display content complete");
-      }
+      bool first_content = !this->screen_.any();
       std::string text;
       text.reserve(n + 4);
       for (int i = 0; i < n && payload[i] != 0; i++) {
@@ -637,19 +628,22 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
           text.push_back((char) (0x80 | (c & 0x3F)));
         }
       }
-#ifdef USE_NIBE_DISPLAY_WEB
-      strlcpy(this->snap_rows_[row - 2], text.c_str(), sizeof(this->snap_rows_[0]));
-#endif
+      this->screen_.set_row(row, text.c_str());
+      if (first_content) {
+        // the repeat phase ends at the FIRST content row (protocol.md "The display slot")
+        this->content_query_.disarm();  // queued requests pop at the next poll
+        ESP_LOGI(TAG, "first content row (row %u) received: request pump off", row);
+      }
+      if (this->screen_.complete()) {
+        ESP_LOGI(TAG, "rows 2-4 received: display content complete");
+      }
 #ifdef USE_TEXT_SENSOR
       for (const auto &sink : this->row_sinks_)
         if (sink.row == row)
-          sink.sensor->publish_state(text);
+          sink.sensor->publish_state(this->screen_.row(row));
 #endif
     } else {  // row 1: binary symbol strip (undocumented bits; publish raw hex for now)
-#ifdef USE_NIBE_DISPLAY_WEB
-      this->sym_raw_len_ = std::min((int) n, (int) sizeof(this->sym_raw_));
-      memcpy(this->sym_raw_, payload, this->sym_raw_len_);
-#endif
+      this->screen_.set_symbols(payload, n);
 #ifdef USE_TEXT_SENSOR
       for (const auto &sink : this->row_sinks_)
         if (sink.row == 1)
@@ -873,8 +867,8 @@ void NibeBus::dump_config() {
   ESP_LOGCONFIG(TAG, "NibeBus:");
   ESP_LOGCONFIG(TAG, "  role: %s, address: %04X", this->role_name(), this->my_addr_);
   ESP_LOGCONFIG(TAG, "  rows 2/3/4 seen: %d/%d/%d, request pump: %s, menu_reply: %s",
-                (this->rows_seen_ & 1) ? 1 : 0, (this->rows_seen_ & 2) ? 1 : 0,
-                (this->rows_seen_ & 4) ? 1 : 0, this->content_query_.active() ? "ON" : "OFF",
+                (this->screen_.seen() & 1) ? 1 : 0, (this->screen_.seen() & 2) ? 1 : 0,
+                (this->screen_.seen() & 4) ? 1 : 0, this->content_query_.active() ? "ON" : "OFF",
                 this->menu_reply_ ? "ON" : "OFF");
   if (this->bus_ != nullptr)
     ESP_LOGCONFIG(TAG, "  9-bit line: TX marks ENQ 1 / data 0; RX carries the slot as a per-byte fact");
@@ -925,7 +919,7 @@ void NibeButton::press_action() {
 #endif  // USE_BUTTON
 
 void NibeBus::set_knob_placement(uint8_t position) {
-  this->knob_pos_ = position;
+  this->screen_.set_knob(position);
   // one knob event per placement change; queue_key_number gates on the emulator role like keys
   this->queue_key_number(KEY_KNOB, position);
 }

@@ -9,6 +9,7 @@
 #include "esphome/core/log.h"
 #include "nibe_frame.h"
 #include "nibe_queries.h"
+#include "nibe_screen.h"
 #include "nibe_wire.h"
 
 #ifdef USE_TEXT_SENSOR
@@ -152,8 +153,6 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
     this->parser_.set_address(address);
   }
   void set_bus(rs485_bus::RS485Bus *bus) { this->bus_ = bus; }
-  /// true once the master has delivered all three text rows (ISR-safe read)
-  bool IRAM_ATTR rows_complete_() const { return (this->rows_seen_ & 0x07) == 0x07; }
   void set_menu_reply(bool enable) { this->menu_reply_ = enable; }
 #ifdef USE_TIME
   /// D4 clock reply source: answering a 0xD4 sets the SYSTEM CLOCK — opt-in, silenced unless synced/valid.
@@ -243,7 +242,7 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
 
   // ---- queries (task side): the engine as a QueryContext ----------------------
   bool send(uint8_t cmd, const uint8_t *data, size_t len, Repeat repeat) override;
-  bool content_complete() override { return this->rows_seen_ != 0; }
+  bool content_complete() override { return this->screen_.any(); }
   bool queue_empty() override;
   bool queue_has_once() override;
   uint32_t queue_used() override;
@@ -320,7 +319,6 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   volatile uint8_t push_ack_wr_{0};
   volatile uint8_t push_ack_rd_{0};
   uint8_t request_byte_{0x88};          // relaid system value in cmd-40 frames
-  uint8_t knob_pos_{127};               // panel knob placement (mid/vertical)
   uint8_t register_addr_{0};            // probe target pinned by the register-address number
 
   // Delayed replies (mute-turnaround): armed in the RX ISR; fired by the tick (device) or loop (host).
@@ -400,8 +398,9 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   volatile uint32_t echo_filtered_{0}, anomalies_{0}, tx_sent_{0}, tx_refused_{0};
   volatile uint32_t last_gap_us_{0};
 
+  ScreenState screen_;  // what the panel shows: rows, symbol strip, knob
+
   // Content-request pump (protocol.md "The display slot"): refills while the master is unready.
-  volatile uint8_t rows_seen_{0};  // bit0=row2, bit1=row3, bit2=row4 (from master)
 
   // ---- task side state -------------------------------------------------------
   uint32_t last_ev_ts_{0};  // µs stamp of the handled event before this one (log tail)
@@ -418,10 +417,7 @@ class NibeBus : public Component, public ExchangeSink, public QueryContext {
   std::vector<std::pair<uint8_t, text_sensor::TextSensor *>> f2025_frame_hex_sinks_{};
 #endif
 #ifdef USE_NIBE_DISPLAY_WEB
-  // ---- display-page state: the frame handler writes, the page builders read — same task context ----
-  uint8_t sym_raw_[3]{};
-  uint8_t sym_raw_len_{0};
-  char snap_rows_[3][48]{};  // rows 2/3/4 text, latin-1 -> utf-8 handled
+  // ---- display-page state: the page builders read it — same task context ----
   void web_handle_action_(const std::string &action);
   std::string build_display_page_();
   std::string build_display_json_();
