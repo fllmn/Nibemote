@@ -186,6 +186,13 @@ The panel can also *send* 0x32 (empty) as a query — the "Query master state
 (0x32)" button. Only the master->panel direction has been observed, so the
 master's answer, ETX or silence is the experiment; the frame and tx logs show it.
 
+**Result (device, 2026-11-24):** the panel sent `32 00 F9 01 00 CA`; the master
+receipt-ACKed it and sent nothing else — no answer frame, NAK or ETX. That fits
+the master->panel captures: the master pushes `32 00` about every 60 s and the
+real panel answers with its receipt ACK only. So 0x32 is a one-way notification in
+the master->panel direction, and the panel-sent direction has no observable
+answer. It is not a query channel to the master.
+
 ## 13. REJECTED: the forum 0xC0 parameter map (do not re-import)
 
 The Elektronikforumet thread t=13714 ("PC-styrning av Bergvärmepump",

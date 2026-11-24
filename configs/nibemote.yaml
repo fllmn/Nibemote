@@ -309,7 +309,7 @@ button:
   - platform: nibe
     nibe_id: nibe_bus
     state_query: true
-    name: "Query master state (0x32)"
+    name: "Send 0x32 (experiment)"
 
 number:
   # the front-panel knob: value = placement (u8 0-255), queued as one

@@ -472,7 +472,7 @@ bool NibeBus::queue_state_query() {
     ESP_LOGW(TAG, "role is %s: state query 0x32 not queued (refuses to transmit)", this->role_name());
     return false;
   }
-  ESP_LOGI(TAG, "queueing 0x32 state query (experiment: answer, ETX or silence?)");
+  ESP_LOGI(TAG, "queueing 0x32 state query (master receipts it; no answer in the 2026-11-24 test)");
   return this->menu_state_query_.ask(*this);
 }
 
@@ -615,7 +615,9 @@ void NibeBus::drain_tx_notices_() {
         uint8_t len = this->tx_log_len_ < TX_FRAME_MAX ? this->tx_log_len_ : TX_FRAME_MAX;
         for (uint8_t i = 0; i < len; i++)  // stack copy off the volatile mirror
           fbuf[i] = this->tx_log_buf_[i];
-        this->ex_add_(n.ts, EX_FRAME_TX, n.byte, 0, fbuf, len);
+        const bool framed = len >= 5 && fbuf[0] == n.byte;
+        this->ex_add_(n.ts, EX_FRAME_TX, n.byte, this->my_addr_, framed ? &fbuf[4] : fbuf,
+                      framed ? fbuf[3] : 0);
         if (this->log_level_ >= 2) {
           ESP_LOGI(TAG, "tx: %02X len=%u%s", n.byte, n.len, tail);
           if (len >= 5 && fbuf[0] == n.byte) {

@@ -20,7 +20,8 @@ bool RegisterQuery::read(QueryContext &ctx, uint8_t reg) {
 }
 
 bool MenuStateQuery::ask(QueryContext &ctx) {
-  return ctx.send(CMD_STATE_QUERY, nullptr, 0, Repeat::NO);
+  uint8_t data[1] = {0x00};  // the master's own 0x32 carries one 00 byte (captures)
+  return ctx.send(CMD_STATE_QUERY, data, sizeof(data), Repeat::NO);
 }
 
 void QueryScheduler::refill(QueryContext &ctx) {

@@ -30,8 +30,8 @@ value.
 | 0x62 | master -> panel | empty | menu session opener |
 | 0x62 | panel -> master | `0F` | menu session reply |
 | 0x63 | master -> panel | `0F` | menu follow-through, unknown |
-| 0x32 / 0x33 / 0x35 | master -> panel | empty / `00` | one-shot menu/state, unknown |
-| 0x32 | panel -> master | empty | sent as a query by the panel (master response not observed) |
+| 0x32 / 0x33 / 0x35 | master -> panel | `00` / empty | one-shot notification; the panel receipts it, no answer frame |
+| 0x32 | panel -> master | `00` | the panel sent it; the master receipts it and does not answer (hypotheses.md 12) |
 | 0x72 / 0x76 | both | `05 <reg>` / `05 <reg> <val>` | register read / write |
 | 0xD4 | master -> panel | empty | clock query (7-byte BCD answer) |
 
