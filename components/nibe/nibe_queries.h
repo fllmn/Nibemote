@@ -75,11 +75,13 @@ class QueryScheduler {
     if (this->count_ < MAX_QUERIES)
       this->queries_[this->count_++] = q;
   }
+  /// Registration declares the outbound command surface (dump_config lists it). One-shot
+  /// units are triggered directly by the entity that wants them; only repeatables pump here.
   /// How many entries refill tops the queue up to (the engine sets half its capacity).
   void set_fill_target(uint32_t n) { this->fill_target_ = n; }
   /// Top up repeatable frames (loop rate).
   void refill(QueryContext &ctx);
-  /// The reply byte for a poll to our slot, after topping up.
+  /// The reply byte for a poll to our slot, from the queue as the loop left it.
   uint8_t poll_reply(QueryContext &ctx);
   void reset_governor() {
     this->enq_streak_ = 0;

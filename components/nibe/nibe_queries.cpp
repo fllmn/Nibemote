@@ -35,7 +35,8 @@ void QueryScheduler::refill(QueryContext &ctx) {
 }
 
 uint8_t QueryScheduler::poll_reply(QueryContext &ctx) {
-  this->refill(ctx);
+  // classify from the queue as the loop left it: refill runs after the poll (loop / tx notice),
+  // exactly as the shipped governor did — refilling here would hide the empty-queue reset
   if (ctx.queue_empty()) {
     this->enq_streak_ = 0;
     this->bare_owed_ = 0;
