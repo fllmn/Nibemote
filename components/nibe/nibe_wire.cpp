@@ -2,6 +2,13 @@
 
 namespace esphome::nibe {
 
+void ExchangeParser::reset() {
+  this->st_ = P_BOUNDARY;
+  this->slot_ours_ = false;
+  this->f_idx_ = 0;
+  this->chk_rescue_ = true;
+}
+
 void ExchangeParser::feed(const WireRecord &rec) {
   if ((rec.flags & WRF_GAP) != 0) {
     this->gap_(rec.ts);
@@ -77,10 +84,10 @@ void ExchangeParser::byte_(uint8_t b, uint32_t ts) {
 
 /// Boundary byte dispatch: poll-pair hi candidates, stray control bytes, or a frame start.
 void ExchangeParser::boundary_(uint8_t b, uint32_t ts) {
-  if (b == 0x00 || b == 0x41) {  // poll hi: nodes are 00xx (VVM accessories/display), F2025 = 41xx
+  if (is_poll_hi(b)) {  // poll hi: nodes are 00xx (VVM accessories/display), F2025 = 41xx
     this->poll_hi_ = b;
     this->st_ = P_POLL_HI;
-  } else if (b == CTRL_ACK || b == CTRL_ENQ || b == CTRL_NAK || b == CTRL_ETX) {
+  } else if (is_ctrl_byte(b)) {
     this->sink_->on_ctrl(ts, b, 0);
   } else {
     this->begin_frame_(b);
@@ -98,10 +105,10 @@ void ExchangeParser::poll_lo_(uint8_t b, uint32_t ts) {
 
 /// Response/continuation slot of the just-polled exchange.
 void ExchangeParser::ctrl_(uint8_t b, uint32_t ts) {
-  if (b == CTRL_ACK || b == CTRL_ENQ || b == CTRL_NAK || b == CTRL_ETX) {
+  if (is_ctrl_byte(b)) {
     this->sink_->on_ctrl(ts, b, this->polled_addr_);
     this->st_ = P_BOUNDARY;
-  } else if (b == 0x00 || b == 0x41) {
+  } else if (is_poll_hi(b)) {
     // node silent; master moved straight to the next poll
     this->poll_hi_ = b;
     this->st_ = P_POLL_HI;
@@ -127,7 +134,7 @@ void ExchangeParser::chk_(uint8_t b, uint32_t ts) {
       this->f_len_++;
       this->xor_run_ ^= b;
     }
-    this->sink_->on_ctrl(ts, 0x00, 0);  // marker: len was off-by-one
+    this->sink_->on_len_rescue(ts, this->f_len_);
     return;                             // stay in P_F_CHK — the next byte is the new chk candidate
   }
   this->chk_rescue_ = true;
@@ -152,7 +159,7 @@ void ExchangeParser::post_frame_(uint8_t b, uint32_t ts) {
     this->st_ = P_BOUNDARY;
   } else if (b == CTRL_ACK || b == CTRL_NAK) {
     this->sink_->on_ctrl(ts, b, 0);
-  } else if (b == 0x00 || b == 0x41) {
+  } else if (is_poll_hi(b)) {
     // missing ETX; salvage by treating the pair as the next poll and move on
     this->sink_->on_anomaly(ts, AN_STRAY_CTRL);
     this->poll_hi_ = b;

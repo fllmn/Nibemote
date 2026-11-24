@@ -52,6 +52,12 @@ static constexpr uint8_t CMD_PARAM = 0xC0;
 static constexpr uint8_t CMD_REG_READ = 0x72;
 static constexpr uint8_t REG_PREFIX = 0x05;
 
+/// Wire facts shared by the ISR tracker and the task parser — one spelling, so the two cannot drift.
+static inline bool is_poll_hi(uint8_t b) { return b == 0x00 || b == 0x41; }
+static inline bool is_ctrl_byte(uint8_t b) {
+  return b == CTRL_ACK || b == CTRL_ENQ || b == CTRL_NAK || b == CTRL_ETX;
+}
+
 // XOR-8 over cmd, sender, len and data. Pure/ISR-safe.
 static inline uint8_t checksum8(const uint8_t *data, size_t len) {
   uint8_t x = 0;

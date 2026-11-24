@@ -19,8 +19,6 @@ static constexpr uint8_t WRF_MARKED = 0x02;  // the byte's ninth (marking) bit r
 enum Anomaly : uint8_t {
   AN_DESYNC_HUNT,       // checksum failed; hunting for the next ETX/gap boundary
   AN_FRAME_ABORT,       // declared frame len exceeds capacity; syncing
-  AN_ECHO_FILTERED,     // byte identical to our own reply inside the echo window
-  AN_TX_REFUSED,        // send_burst refused our reply (hard rule: count, never retry)
   AN_OWN_POLL_TIMEOUT,  // emulator: master stopped polling us (delivery queue dropped)
   AN_STRAY_CTRL,        // control byte seen at a place it shouldn't be (info)
 };
@@ -37,6 +35,8 @@ class ExchangeSink {
   virtual void on_frame_bad(uint32_t ts, uint8_t cmd, uint16_t sender, uint8_t len) = 0;
   virtual void on_anomaly(uint32_t ts, uint8_t code) = 0;
   virtual void on_gap(uint32_t ts, uint32_t gap_us) = 0;
+  /// A frame declared one byte less than it carried; the parser absorbed the extra byte and retested.
+  virtual void on_len_rescue(uint32_t ts, uint8_t declared_len) = 0;
 };
 
 /// Frame parser over captured bytes: boundaries, checksum, len-lie rescue, payload assembly.
@@ -47,6 +47,8 @@ class ExchangeParser {
   void set_address(uint16_t address) { this->my_addr_ = address; }
 
   void feed(const WireRecord &rec);
+  /// Drop partial frame state (used when the wire ring lost bytes and the stream is torn).
+  void reset();
 
   uint32_t frames_ok() const { return this->frames_ok_; }
   uint32_t frames_bad() const { return this->frames_bad_; }

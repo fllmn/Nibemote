@@ -14,6 +14,18 @@ static const char *const KEY_NAMES[] = {"?", "PLUS", "MINUS", "?", "ENTER"};
 static inline uint32_t IRAM_ATTR q_load_(volatile uint32_t *v) { return __atomic_load_n(v, __ATOMIC_ACQUIRE); }
 static inline void IRAM_ATTR q_store_(volatile uint32_t *v, uint32_t val) { __atomic_store_n(v, val, __ATOMIC_RELEASE); }
 
+/// SPSC ring push: one producer (ISR or the host loop) writes head, one consumer writes tail.
+template <typename T, size_t N>
+IRAM_ATTR inline bool ring_push_(volatile uint32_t *head, volatile uint32_t *tail, T *ring, const T &rec) {
+  uint32_t h = q_load_(head);
+  uint32_t next = (h + 1) % N;
+  if (next == q_load_(tail))
+    return false;
+  ring[h] = rec;
+  q_store_(head, next);
+  return true;
+}
+
 static inline void hex_(char *out, size_t cap, const uint8_t *data, size_t len) {
   size_t p = 0;
   for (size_t i = 0; i < len && p + 3 < cap; i++) {
@@ -24,34 +36,25 @@ static inline void hex_(char *out, size_t cap, const uint8_t *data, size_t len) 
 // ------ engine side: ISR ingest + wire mechanics, task parse (ADR-0001) ------
 
 void IRAM_ATTR NibeBus::push_wire_(uint8_t b, uint32_t ts, uint8_t flags) {
-  uint32_t h = q_load_(&this->wire_head_);
-  uint32_t next = (h + 1) % WIRE_RING_N;
-  if (next == q_load_(&this->wire_tail_)) {  // parser too slow: drop newest, reported in the summary
-    this->wire_overflow_++;
-    return;
+  if (!ring_push_<WireRecord, WIRE_RING_N>(&this->wire_head_, &this->wire_tail_, this->wire_,
+                                           WireRecord{ts, b, flags})) {
+    this->wire_overflow_++;  // parser too slow: drop newest, and resync it on what survived
+    this->wire_lost_ = true;
   }
-  this->wire_[h] = WireRecord{ts, b, flags};
-  q_store_(&this->wire_head_, next);
 }
 
 void IRAM_ATTR NibeBus::push_wire_gap_(uint32_t ts) {
-  uint32_t h = q_load_(&this->wire_head_);
-  uint32_t next = (h + 1) % WIRE_RING_N;
-  if (next == q_load_(&this->wire_tail_)) {
+  if (!ring_push_<WireRecord, WIRE_RING_N>(&this->wire_head_, &this->wire_tail_, this->wire_,
+                                           WireRecord{ts, 0, WRF_GAP})) {
     this->wire_overflow_++;
-    return;
+    this->wire_lost_ = true;
   }
-  this->wire_[h] = WireRecord{ts, 0, WRF_GAP};
-  q_store_(&this->wire_head_, next);
 }
 
 void IRAM_ATTR NibeBus::push_tx_notice_(uint32_t ts, uint8_t kind, uint8_t byte, uint8_t len) {
-  uint32_t h = q_load_(&this->tx_notice_head_);
-  uint32_t next = (h + 1) % TX_NOTICE_N;
-  if (next == q_load_(&this->tx_notice_tail_))
-    return;  // log only: the loop pumps the request queue every pass regardless
-  this->tx_notices_[h] = TxNotice{ts, kind, byte, len};
-  q_store_(&this->tx_notice_head_, next);
+  // log only: a full notice ring drops, and the loop pumps the request queue every pass regardless
+  ring_push_<TxNotice, TX_NOTICE_N>(&this->tx_notice_head_, &this->tx_notice_tail_, this->tx_notices_,
+                                    TxNotice{ts, kind, byte, len});
 }
 
 bool IRAM_ATTR NibeBus::reply_to_poll_(uint32_t ts, uint8_t reply) {
@@ -64,6 +67,7 @@ bool IRAM_ATTR NibeBus::reply_to_poll_(uint32_t ts, uint8_t reply) {
   }
   this->tx_sent_++;
   this->enq_pending_ = (reply == CTRL_ENQ);
+  this->heard_since_tx_ = false;  // the next byte heard may be our own echo
   this->push_tx_notice_(ts, TXN_REPLY, reply, 0);
   return true;
 }
@@ -133,15 +137,19 @@ void IRAM_ATTR NibeBus::feed_paced_(uint32_t now) {
     this->paced_prev_feed_us_ = now;
     k++;
     if (k == n)
-      this->push_tx_notice_(now, TXN_FEED_DONE, 0xFE, 0);  // feed-done marker (gap report)
+      this->push_tx_notice_(now, TXN_FEED_DONE, 0, 0);  // feed-done marker (gap report)
   }
   this->paced_k_ = k;
 }
 
 void IRAM_ATTR NibeBus::rx_byte_(uint8_t b, uint32_t ts, uint8_t flags) {
   const bool marked = (flags & rs485_bus::RXF_HB9) != 0;
-  // hardware mutes the receiver while transmitting; this stateful filter is belt-and-braces (protocol.md)
-  if (this->ws_ == WS_CTRL && b == this->reply_byte_ && (ts - this->reply_ts_) < 4 * this->byte_us_) {
+  // hardware mutes the receiver while transmitting; this filter is belt-and-braces (protocol.md).
+  // One-shot: only the FIRST byte heard after our own reply can be its echo.
+  const bool first_since_tx = !this->heard_since_tx_;
+  this->heard_since_tx_ = true;
+  if (first_since_tx && this->ws_ == WS_CTRL && b == this->reply_byte_ &&
+      (ts - this->reply_ts_) < 4 * this->byte_us_) {
     this->echo_filtered_++;
     return;
   }
@@ -153,7 +161,7 @@ void IRAM_ATTR NibeBus::rx_byte_(uint8_t b, uint32_t ts, uint8_t flags) {
 void IRAM_ATTR NibeBus::track_byte_(uint8_t b, uint32_t ts, bool marked) {
   switch (this->ws_) {
     case WS_BOUNDARY: {
-      if (b == 0x00 || b == 0x41) {  // poll hi: nodes are 00xx (VVM accessories/display), F2025 = 41xx
+      if (is_poll_hi(b)) {  // poll hi: nodes are 00xx (VVM accessories/display), F2025 = 41xx
         this->ws_poll_hi_ = b;
         this->ws_ = WS_POLL_HI;
       } else if (b == CTRL_ACK) {
@@ -166,7 +174,7 @@ void IRAM_ATTR NibeBus::track_byte_(uint8_t b, uint32_t ts, bool marked) {
           this->arm_reply_(RP_CTRL, CTRL_ETX, ts, FRAME_CLOSE_DELAY_US);
           this->we_own_close_ = false;  // the close is armed/fired — exactly once
         }
-      } else if (b != CTRL_ENQ && b != CTRL_NAK && b != CTRL_ETX) {
+      } else if (!is_ctrl_byte(b)) {
         this->ws_ = WS_FRAME_HDR;
         this->ws_skip_ = 2;  // sender hi/lo; the len byte is read by WS_FRAME_LEN
       }
@@ -191,9 +199,9 @@ void IRAM_ATTR NibeBus::track_byte_(uint8_t b, uint32_t ts, bool marked) {
           this->enq_pending_ = false;
         }
         this->ws_ = WS_BOUNDARY;
-      } else if (b == CTRL_ENQ || b == CTRL_NAK || b == CTRL_ETX) {
+      } else if (is_ctrl_byte(b)) {
         this->ws_ = WS_BOUNDARY;
-      } else if (b == 0x00 || b == 0x41) {
+      } else if (is_poll_hi(b)) {
         this->ws_poll_hi_ = b;  // node silent; the master moved straight to the next poll
         this->ws_ = WS_POLL_HI;
       } else {
@@ -215,8 +223,9 @@ void IRAM_ATTR NibeBus::track_byte_(uint8_t b, uint32_t ts, bool marked) {
       break;
     case WS_FRAME_BODY:
       if (marked) {
-        // data bytes are unmarked (protocol.md): a marked byte is a boundary token, so a len-lie resyncs here
-        if (b == 0x00 || b == 0x41) {
+        // data bytes are unmarked (protocol.md); a marked byte here can only be a genuine boundary
+        // token, so treat it as one rather than counting it as payload
+        if (is_poll_hi(b)) {
           this->ws_poll_hi_ = b;
           this->ws_ = WS_POLL_HI;
           break;
@@ -234,7 +243,7 @@ void IRAM_ATTR NibeBus::track_byte_(uint8_t b, uint32_t ts, bool marked) {
         this->ws_ = WS_BOUNDARY;
       } else if (b == CTRL_ACK || b == CTRL_NAK) {
         // await the sender's ETX
-      } else if (b == 0x00 || b == 0x41) {
+      } else if (is_poll_hi(b)) {
         // missing ETX; salvage by treating the pair as the next poll and move on
         this->ws_poll_hi_ = b;
         this->ws_ = WS_POLL_HI;
@@ -299,16 +308,6 @@ void IRAM_ATTR NibeBus::fire_pending_reply_(uint32_t now) {
   const uint32_t delay_var = this->reply_delay_var_;
   if (__sync_val_compare_and_swap(&this->reply_fire_at_us_, at, 0u) != at)
     return;
-#ifdef USE_ESP32
-  // device only: a reply the task armed too late for its window is dropped, not sent into the next
-  // exchange. A few character times of grace covers tick jitter; host builds have no real master
-  // listening window — the sim's loop is the fire clock.
-  if ((int32_t) (now - at) > (int32_t) (4 * this->byte_us_)) {
-    this->reply_drops_++;
-    this->enq_pending_ = false;
-    return;
-  }
-#endif
   if (!this->emulating()) {
     this->enq_pending_ = false;
     return;  // kill switch between arm and fire: transmit nothing
@@ -460,6 +459,10 @@ void NibeBus::tail_(uint32_t ts, char *out, size_t cap) {
 }
 
 void NibeBus::parse_wire_() {
+  if (this->wire_lost_) {  // bytes were dropped: what survived is a torn stream — resync before using it
+    this->wire_lost_ = false;
+    this->parser_.reset();
+  }
   uint32_t h = q_load_(&this->wire_head_);
   uint32_t t = q_load_(&this->wire_tail_);
   while (t != h) {
@@ -579,6 +582,13 @@ void NibeBus::on_gap(uint32_t ts, uint32_t gap_us) {
     ESP_LOGD(TAG, "gap %lu us%s", (unsigned long) gap_us, tail);
 }
 
+void NibeBus::on_len_rescue(uint32_t ts, uint8_t declared_len) {
+  char tail[28];
+  this->tail_(ts, tail, sizeof(tail));
+  if (this->log_level_ >= 2)
+    ESP_LOGD(TAG, "frame len rescue: declared %u, one extra byte absorbed%s", declared_len, tail);
+}
+
 void NibeBus::on_anomaly(uint32_t ts, uint8_t code) {
   char tail[28];
   this->tail_(ts, tail, sizeof(tail));
@@ -587,8 +597,6 @@ void NibeBus::on_anomaly(uint32_t ts, uint8_t code) {
   switch (code) {
     case AN_DESYNC_HUNT: why = "checksum failed -> hunting ETX"; break;
     case AN_FRAME_ABORT: why = "frame len absurd"; break;
-    case AN_ECHO_FILTERED: why = "echo filtered"; break;
-    case AN_TX_REFUSED: why = "tx refused (dropped, NOT retried)"; break;
     case AN_OWN_POLL_TIMEOUT: why = "master stopped polling us"; break;
     case AN_STRAY_CTRL: why = "control byte/reply missing somewhere"; break;
   }
@@ -772,17 +780,17 @@ void NibeBus::emulator_push_ack_tick_() {
   // fire ONE aged push receipt per pass, only when the line is quiet (protocol.md)
   if (!this->emulating() || this->bus_ == nullptr)
     return;
-  uint8_t rd = __atomic_load_n(&this->push_ack_rd_, __ATOMIC_RELAXED);
-  uint8_t wr = __atomic_load_n(&this->push_ack_wr_, __ATOMIC_ACQUIRE);
+  uint8_t rd = this->push_ack_rd_;
+  uint8_t wr = this->push_ack_wr_;
   if ((uint8_t) (wr - rd) == 0)
     return;
   if (this->bus_->rx_silence_us() < 2500)  // mid-burst: never collide with the stream
     return;
   uint32_t now = (uint32_t) esphome::micros();
-  uint32_t arm_ts = __atomic_load_n(&this->push_acks_[rd % 4], __ATOMIC_RELAXED);
+  uint32_t arm_ts = this->push_acks_[rd % 4];
   if ((now - arm_ts) < PUSH_ACK_DELAY_US)  // render lag not elapsed yet
     return;
-  __atomic_store_n(&this->push_ack_rd_, (uint8_t) (rd + 1), __ATOMIC_RELEASE);  // pop: refused sends still drop, never retried
+  this->push_ack_rd_ = (uint8_t) (rd + 1);  // pop: refused sends still drop, never retried
   uint8_t ack = CTRL_ACK;  // stack copy (kept off flash on every path, as usual)
   if (this->bus_->send_burst(&ack, 1, false)) {
     this->tx_sent_++;
@@ -845,7 +853,7 @@ void NibeBus::loop() {
                      p_other = this->polls_other_, txs = this->tx_sent_, txr = this->tx_refused_,
                      rdrop = this->reply_drops_, ech = this->echo_filtered_, anom = this->anomalies_,
                      evov = this->wire_overflow_;
-      ESP_LOGI(TAG, "bus: frames ok=%u bad=%u polls_own=%u other=%u tx=%u txref=%u replydrop=%u gaps=%u echoes=%u anomalies=%u ev_drop=%u",
+      ESP_LOGI(TAG, "bus: frames ok=%u bad=%u polls_own=%u other=%u tx=%u txref=%u replydrop=%u gaps=%u echoes=%u anomalies=%u wire_drop=%u",
                f_ok, f_bad, p_own, p_other, txs, txr, rdrop, (unsigned) bs.gaps, ech, anom, evov);
       // transport health: framing and parity errors are the corruption signals we keep
       ESP_LOGI(TAG, "bus health: frm_err=%u par_err=%u gl=%u min_rx_delta=%lu us",

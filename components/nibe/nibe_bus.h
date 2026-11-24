@@ -140,10 +140,16 @@ class NibeBus : public Component, public ExchangeSink {
   /// runtime arm/off gate (switch entity); the ISR paths check emulating()
   void set_armed(bool armed) { this->armed_ = armed; }
   /// emulator intent AND a transmit-capable transport AND the arm switch — never one alone
-  bool emulating() const { return this->emulator_intent_ && this->armed_ && this->transmit_capable_(); }
+  /// (called from the ISR: keep it IRAM-safe and inline)
+  bool IRAM_ATTR emulating() const {
+    return this->emulator_intent_ && this->armed_ && this->transmit_capable_();
+  }
   /// cmd-0x40 data[1] in request AND key frames: a relaid system value, no protocol meaning (commands.md).
   void set_request_byte(uint8_t b) { this->request_byte_ = b; }
-  void set_address(uint16_t address) { this->my_addr_ = address; }
+  void set_address(uint16_t address) {
+    this->my_addr_ = address;
+    this->parser_.set_address(address);
+  }
   void set_bus(rs485_bus::RS485Bus *bus) { this->bus_ = bus; }
   /// true once the master has delivered all three text rows (ISR-safe read)
   bool IRAM_ATTR rows_complete_() const { return (this->rows_seen_ & 0x07) == 0x07; }
@@ -230,7 +236,7 @@ class NibeBus : public Component, public ExchangeSink {
 
  protected:
   /// the transport may drive the line (config `active: true`, resolved in the transport's setup)
-  bool transmit_capable_() const { return this->bus_ != nullptr && this->bus_->bus_active(); }
+  bool IRAM_ATTR transmit_capable_() const { return this->bus_ != nullptr && this->bus_->bus_active(); }
 
   // ---- engine (ISR-safe) side ----------------------------------------------
   static void IRAM_ATTR rx_byte_trampoline_(void *ctx, uint8_t byte, uint32_t ts, uint8_t flags) {
@@ -262,6 +268,7 @@ class NibeBus : public Component, public ExchangeSink {
   void on_frame_bad(uint32_t ts, uint8_t cmd, uint16_t sender, uint8_t len) override;
   void on_anomaly(uint32_t ts, uint8_t code) override;
   void on_gap(uint32_t ts, uint32_t gap_us) override;
+  void on_len_rescue(uint32_t ts, uint8_t declared_len) override;
 
 #ifdef USE_ESP32
   /// 125 us esp_timer tick (IRAM callback, esp_timer task): paced frame feeding + delayed replies (protocol.md).
@@ -296,7 +303,7 @@ class NibeBus : public Component, public ExchangeSink {
   bool menu_reply_{true};
   int log_level_{1};
 
-  // Push receipts: armed by the parser when a valid frame lands in our slot; fired >= PUSH_ACK_DELAY_US when quiet.
+  // Push receipts: a loop-only ring — the parser arms, emulator_push_ack_tick_ fires.
   volatile uint32_t push_acks_[4];  // arm timestamps, µs, indexed wr/rd % 4
   volatile uint8_t push_ack_wr_{0};
   volatile uint8_t push_ack_rd_{0};
@@ -335,6 +342,7 @@ class NibeBus : public Component, public ExchangeSink {
 
   // own reply bookkeeping (echo discrimination)
   uint8_t reply_byte_{0};
+  volatile bool heard_since_tx_{true};  // ISR: the first byte after our reply may be its echo
   bool slot_ours_{false};   // true while inside an exchange for our address
   bool enq_pending_{false};  // we ENQed; the next master ACK (06) is our grant, even
                              // across a gap — but any poll pair in between revokes it
@@ -358,6 +366,7 @@ class NibeBus : public Component, public ExchangeSink {
   WireRecord wire_[WIRE_RING_N];
   volatile uint32_t wire_head_{0}, wire_tail_{0};
   volatile uint32_t wire_overflow_{0};
+  volatile bool wire_lost_{false};  // ISR dropped bytes: the parser must resync
 
   // tx notices: ISR emits, loop logs (the wire itself is already recorded by the transport)
   enum TxNoticeKind : uint8_t { TXN_REPLY = 1, TXN_FRAME, TXN_FEED_DONE, TXN_TX_REFUSED };

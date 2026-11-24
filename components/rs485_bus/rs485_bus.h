@@ -106,8 +106,8 @@ class RS485Bus final : public Component {
     this->hooks_ = hooks;
   }
 
-  /// True when this bus is allowed to drive the line (config `active: true`).
-  bool bus_active() const { return this->active_; }
+  /// True when this bus is allowed to drive the line (config `active: true`). ISR-safe: set once in setup.
+  bool IRAM_ATTR bus_active() const { return this->active_; }
   bool is_hw_isr() const;
   uint32_t get_baud_rate() const { return this->baud_; }
 
