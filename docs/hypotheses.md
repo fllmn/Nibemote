@@ -147,13 +147,22 @@ about the register semantics or the panel's values is decoded. A capture
 session changing one VVM300 setting at a time would map registers to menu
 parameters — the clean path to a future parameter-write feature.
 
-Observed on the wire (device, 2026-11-24): the master asks the F2025 `72 05 11`
-and the F2025 answers `72` with a single payload byte `00`. Whether that byte is
-the value, a status, or the first of a longer field is not established — so
-nibemote logs the answer raw and attributes it to the register the master last
-requested for that node, an assumption rather than an established rule. A
-panel-initiated `72 05 <reg>` is still unexercised; the panel-sent 0x32 query
-(item 12) has the same open shape.
+Observed on the wire: register traffic is **master-initiated**. The master asks
+`72 05 <reg>` (len 2) and the addressed node answers in the same window by ENQing:
+
+- the display answers `72 05 <reg> <val>` (len 3) — `0x40=06, 0x41=00, 0x42=00`;
+- the F2025 answers a single value byte (len 1) — register `0x11` read
+  `00/03/04/11/14` across captures.
+
+No node was seen initiating a read or a write. Tested on the device (2026-11-24):
+the panel sent `72 05 11` and `72 05 40`; the master receipt-ACKed both and sent
+nothing else — no answer frame, NAK or ETX. The master does not serve register
+reads, so the panel cannot read the master's registers.
+
+Consequences: the values are obtainable by capturing the master's own reads (the
+passive pairing attributes each answer to the register the master asked the polled
+node for). To mimic the panel, nibemote must *answer* the master's reads of
+`0x40`-`0x42` — not implemented yet; its own probe requests are inert.
 
 ## 9. Idle-slot keepalive 0xFF purpose
 

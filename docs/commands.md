@@ -93,7 +93,12 @@ Byte-packed u16 LE fields on odd offsets (no word grid).
 register numbers across nodes with node-specific values. Power-up writes
 to the F2025 arrive as 0x76 len-3 bursts.
 
-The emulator can queue a read (register-address number + read-register
-button). Observed answer shape: master `72 05 11`, F2025 `72 00` — one payload
-byte; nibemote logs the answer raw and attributes it to the last request for that
-node (an assumption). The answer body is not decoded (hypotheses.md 8).
+Registers are **master-initiated**: the master asks `72 05 <reg>` and the addressed
+node answers in the same window — the display with `05 <reg> <val>` (e.g. `05 40 06`),
+the F2025 with a single value byte (e.g. `72 14` for register `0x11`). nibemote logs
+each answer raw, attributed to the register the master asked for that node
+(hypotheses.md 8).
+
+A panel-initiated read is inert: `05 11` and `05 40` were sent from the panel and the
+master receipt-ACKed both without answering. The register-address number and
+"Send 0x72 read" button are experiment tools, not a read channel.

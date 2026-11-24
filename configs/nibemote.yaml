@@ -302,7 +302,7 @@ button:
   - platform: nibe
     nibe_id: nibe_bus
     read_register: true
-    name: "Read register"
+    name: "Send 0x72 read (experiment)"
   # proof command: a once-off 0x32 with no payload. Only seen master->panel so
   # far, so the outcome (answer frame / ETX refusal / silence) is the experiment;
   # the frame log and the tx log show it (docs/commands.md).

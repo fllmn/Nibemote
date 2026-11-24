@@ -463,7 +463,8 @@ bool NibeBus::queue_register_read() {
              this->role_name(), this->register_addr_);
     return false;
   }
-  ESP_LOGI(TAG, "queueing register read 0x72: 05 %02X (answer lands in the frame log)", this->register_addr_);
+  ESP_LOGI(TAG, "queueing 0x72 read 05 %02X (the master receipts it and does not answer; hypotheses.md 8)",
+           this->register_addr_);
   return this->register_query_.read(*this, this->register_addr_);
 }
 
