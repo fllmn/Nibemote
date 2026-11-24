@@ -49,9 +49,9 @@ static const WebSymbolBit WEB_BITS[] = {
     {2, 5, "?", false},
     {2, 4, "?", false},
     {2, 3, "heating system", true},
-    {2, 2, "? (defrost?)", false},
+    {2, 2, "?", false},
     {2, 1, "? (addition heater?)", false},
-    {2, 0, "? (addition heater?)", false},
+    {2, 0, "defrost", true},
 };
 
 static size_t web_append_escaped(std::string &out, const char *text) {
@@ -165,7 +165,7 @@ std::string NibeBus::build_display_page_() {
   bool hw_b = bit_on(1, 0x20);
   bool pump_on = bit_on(2, 0x80);
   bool heat_on = bit_on(2, 0x08);
-  // addition heater I/II/III and defrost bits are not mapped yet — always dim
+  // addition heater I/II/III bits are not mapped (always dim); defrost is b2.0 (bit table)
 
   // row 4: split "menu        clock" into left/right values
   std::string r4l, r4r;

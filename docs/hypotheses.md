@@ -123,6 +123,10 @@ captures with what the panel shows) — six symbols annotated, none of it
 machine-confirmed. A menu-driven capture session flipping each statescreen
 (heating, hot water, alarm...) would fix the table.
 
+Observed (2026-11-24, web page during a defrost cycle): **`b2.0` is the defrost
+state**. The earlier guesses on `b2.2` ("defrost?") and `b2.0` ("addition
+heater?") were wrong. Addition heater I/II/III remain unmapped.
+
 ## 7. Node 0x00FA — the boot-scan slot (investigation parked)
 
 00FA was polled 14x in BOTH boot captures and never in steady state — paired
