@@ -291,7 +291,7 @@ void IRAM_ATTR NibeBus::purge_stale_requests_() {
   uint32_t h = q_load_(&this->txq_head_);
   uint32_t t = q_load_(&this->txq_tail_);
   uint32_t t0 = t;
-  while (h != t && tx_is_request_(this->tx_queue_[t % TX_QUEUE_N]))
+  while (h != t && this->tx_queue_[t % TX_QUEUE_N].repeatable)
     t = (t + 1) % (2 * TX_QUEUE_N);
   if (t != t0)
     q_store_(&this->txq_tail_, t);  // requests expire at the first content row
@@ -347,6 +347,11 @@ void NibeBus::setup() {
     this->byte_us_ = 11u * (1000000u / this->bus_->get_baud_rate());  // 9-bit chars + stop
   this->parser_.set_sink(this);
   this->parser_.set_address(this->my_addr_);
+  this->content_query_.set_request_byte(this->request_byte_);
+  this->scheduler_.set_fill_target(TX_QUEUE_N / 2);
+  this->scheduler_.add(&this->content_query_);
+  this->scheduler_.add(&this->key_query_);
+  this->scheduler_.add(&this->register_query_);
   ESP_LOGCONFIG(TAG, "NibeBus: %s role, address %04X", this->role_name(), this->my_addr_);
 #ifdef USE_ESP32
   if (!this->emulator_intent_ || !this->transmit_capable_())
@@ -365,7 +370,37 @@ void NibeBus::setup() {
 #endif
 }
 
-bool NibeBus::queue_frame_(uint8_t cmd, const uint8_t *data, size_t len) {
+bool NibeBus::send(uint8_t cmd, const uint8_t *data, size_t len, bool repeatable) {
+  return this->queue_frame_(cmd, data, len, repeatable);
+}
+
+uint32_t NibeBus::effective_tail_() {
+  // once content is complete, requests are dead weight: look past them (the ISR purges them for real)
+  uint32_t t = q_load_(&this->txq_tail_);
+  if (this->rows_seen_ != 0) {
+    uint32_t h = q_load_(&this->txq_head_);
+    while (t != h && this->tx_queue_[t % TX_QUEUE_N].repeatable)
+      t = (t + 1) % (2 * TX_QUEUE_N);
+  }
+  return t;
+}
+
+bool NibeBus::empty() { return q_load_(&this->txq_head_) == this->effective_tail_(); }
+
+bool NibeBus::has_real() {
+  uint32_t h = q_load_(&this->txq_head_);
+  for (uint32_t i = this->effective_tail_(); i != h; i = (i + 1) % (2 * TX_QUEUE_N))
+    if (!this->tx_queue_[i % TX_QUEUE_N].repeatable)
+      return true;
+  return false;
+}
+
+uint32_t NibeBus::used() {
+  uint32_t h = q_load_(&this->txq_head_);
+  return (h - this->effective_tail_() + 2 * TX_QUEUE_N) % (2 * TX_QUEUE_N);
+}
+
+bool NibeBus::queue_frame_(uint8_t cmd, const uint8_t *data, size_t len, bool repeatable) {
   uint8_t buf[TX_FRAME_MAX];
   size_t n = build_frame(buf, sizeof(buf), cmd, this->my_addr_, data, len);
   if (n == 0 || n > TX_FRAME_MAX - 1)
@@ -380,6 +415,7 @@ bool NibeBus::queue_frame_(uint8_t cmd, const uint8_t *data, size_t len) {
   uint32_t next = (head + 1) % (2 * TX_QUEUE_N);
   PendingTx &slot = this->tx_queue_[head % TX_QUEUE_N];
   slot.len = (uint8_t) n;
+  slot.repeatable = repeatable;
   memcpy(slot.buf, buf, n);
   q_store_(&this->txq_head_, next);
   return true;
@@ -387,29 +423,9 @@ bool NibeBus::queue_frame_(uint8_t cmd, const uint8_t *data, size_t len) {
 
 void NibeBus::pump_announces_() {
   // request pump: "40 <sys> 00 00" every poll until the FIRST content row (protocol.md "The display slot")
-  if (!this->emulating() || !this->announce_pump_active_)
+  if (!this->emulating())
     return;
-  if (this->rows_seen_ != 0) {
-    this->announce_pump_active_ = 0;
-    return;
-  }
-  // requests pause while a real answer (key, menu reply) is queued — the display's own answer goes first
-  uint32_t h = q_load_(&this->txq_head_);
-  uint32_t t = q_load_(&this->txq_tail_);
-  for (uint32_t i = t; i != h; i = (i + 1) % (2 * TX_QUEUE_N))
-    if (!tx_is_request_(this->tx_queue_[i % TX_QUEUE_N]))
-      return;
-  uint8_t data[4] = {0x40, this->request_byte_, 0x00, 0x00};  // byte[1]: relaid system value (queue_key matches)
-  // fill to half the queue: continuous requests, slots stay free for keys/menu replies
-  for (;;) {
-    h = q_load_(&this->txq_head_);
-    t = q_load_(&this->txq_tail_);
-    uint32_t used = (h - t + 2 * TX_QUEUE_N) % (2 * TX_QUEUE_N);
-    if (used >= TX_QUEUE_N / 2)
-      break;
-    if (!this->queue_frame_(CMD_ANNOUNCE, data, 4))
-      break;
-  }
+  this->scheduler_.refill(*this, *this, *this);
 }
 
 bool NibeBus::queue_key(uint8_t key) {
@@ -421,8 +437,7 @@ bool NibeBus::queue_key_number(uint8_t key, uint8_t value) {
     ESP_LOGW(TAG, "role is %s: key 0x%02X val 0x%02X not queued (refuses to transmit)", this->role_name(), key, value);
     return false;
   }
-  uint8_t data[4] = {key, value, 0, 0};
-  return this->queue_frame_(CMD_KEY, data, 4);
+  return this->key_query_.press(*this, key, value);
 }
 
 bool NibeBus::queue_register_read() {
@@ -431,19 +446,17 @@ bool NibeBus::queue_register_read() {
              this->role_name(), this->register_addr_);
     return false;
   }
-  uint8_t data[2] = {REG_PREFIX, this->register_addr_};
   ESP_LOGI(TAG, "queueing register read 0x72: 05 %02X (answer lands in the frame log)", this->register_addr_);
-  return this->queue_frame_(CMD_REG_READ, data, sizeof(data));
+  return this->register_query_.read(*this, this->register_addr_);
 }
 
 bool NibeBus::trigger_announce() {
   if (!this->emulating())
     return false;
-  // fresh request cycle after re-arm: the request-repeat pump re-runs until the first content row
+  // fresh request cycle after re-arm: the repeat pump re-runs until the first content row
   this->rows_seen_ = 0;
-  this->announce_pump_active_ = 1;
-  this->enq_streak_ = 0;
-  this->bare_owed_ = 0;
+  this->content_query_.arm();
+  this->scheduler_.reset_governor();
   this->pump_announces_();
   return true;
 }
@@ -530,38 +543,7 @@ void NibeBus::on_poll(uint32_t ts, uint16_t addr) {
   ESP_LOGD(TAG, "poll %04X (own)%s", addr, tail);
   if (!this->emulating())
     return;
-  // ENQ while we owe the master a frame, plain ACK otherwise — the tx queue is the single source of truth
-  uint32_t h = q_load_(&this->txq_head_);
-  uint32_t t = q_load_(&this->txq_tail_);
-  if (this->rows_seen_ != 0) {
-    // first content row: PEEK past expired requests (purge_stale_requests_ owns the pop); keys survive by data[0]
-    while (h != t && tx_is_request_(this->tx_queue_[t % TX_QUEUE_N]))
-      t = (t + 1) % (2 * TX_QUEUE_N);
-  }
-  bool have_real = false;  // non-request frame queued (key / menu reply)
-  for (uint32_t i = t; i != h; i = (i + 1) % (2 * TX_QUEUE_N))
-    if (!tx_is_request_(this->tx_queue_[i % TX_QUEUE_N]))
-      have_real = true;
-  uint8_t reply;
-  if (h == t) {
-    reply = CTRL_ACK;  // nothing deliverable
-    this->enq_streak_ = 0;
-    this->bare_owed_ = 0;
-  } else if (have_real) {
-    reply = CTRL_ENQ;  // real answers are never throttled (don't starve)
-    this->enq_streak_ = 0;
-    this->bare_owed_ = 0;
-  } else if (this->bare_owed_ > 0) {
-    reply = CTRL_ACK;  // breath poll: requests stay queued, the master
-    this->bare_owed_--;    // pushes content into the free slots (hypotheses.md 1)
-  } else if (this->enq_streak_ >= ANNOUNCE_BURST) {
-    reply = CTRL_ACK;  // burst spent: open bare slots for the master
-    this->enq_streak_ = 0;
-    this->bare_owed_ = ANNOUNCE_BREATH - 1;
-  } else {
-    reply = CTRL_ENQ;
-    this->enq_streak_++;
-  }
+  const uint8_t reply = this->scheduler_.poll_reply(*this, *this, *this);
   // mute-turnaround: the reply tick fires the answer into the master's listening window (+0.8-2.4 ms; protocol.md)
   this->arm_reply_(RP_CTRL, reply, ts, POLL_REPLY_DELAY_US);
   // no self-close: the MASTER closes idle exchanges — our self-close collided with its close and corrupted the bus
@@ -633,7 +615,7 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
       this->rows_seen_ |= (uint8_t) (1u << (row - 2));
       if (first_content) {
         // the repeat phase ends at the FIRST content row (protocol.md "The display slot")
-        this->announce_pump_active_ = 0;  // queued requests pop at the next poll
+        this->content_query_.disarm();  // queued requests pop at the next poll
         ESP_LOGI(TAG, "first content row (row %u) received: request pump off", row);
       }
       if (this->rows_complete_()) {
@@ -737,7 +719,7 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
   if (this->emulating() && sender == ADDR_VVM300 && in_our_slot && cmd == CMD_MENU2 && this->menu_reply_) {
     ESP_LOGI(TAG, "master 0x62 menu request: queueing reply");
     uint8_t data[1] = {0x0F};
-    this->queue_frame_(CMD_MENU2, data, 1);
+    this->queue_frame_(CMD_MENU2, data, 1, false);
   }
 
   // clock query: 7-byte BCD + day-of-week reply; opt-in — it sets the master's clock (protocol.md)
@@ -760,7 +742,7 @@ void NibeBus::on_frame(uint32_t ts, uint8_t cmd, uint16_t sender, const uint8_t 
                     "(%04u-%02u-%02u %02u:%02u:%02u)",
                data[0], data[1], data[2], data[3], data[4], data[5], data[6], (unsigned) t.year, (unsigned) t.month,
                (unsigned) t.day_of_month, (unsigned) t.hour, (unsigned) t.minute, (unsigned) t.second);
-      this->queue_frame_(CMD_CLOCK, data, 7);
+      this->queue_frame_(CMD_CLOCK, data, 7, false);
     }
   }
 
@@ -887,7 +869,7 @@ void NibeBus::dump_config() {
   ESP_LOGCONFIG(TAG, "  role: %s, address: %04X", this->role_name(), this->my_addr_);
   ESP_LOGCONFIG(TAG, "  rows 2/3/4 seen: %d/%d/%d, request pump: %s, menu_reply: %s",
                 (this->rows_seen_ & 1) ? 1 : 0, (this->rows_seen_ & 2) ? 1 : 0,
-                (this->rows_seen_ & 4) ? 1 : 0, this->announce_pump_active_ ? "ON" : "OFF",
+                (this->rows_seen_ & 4) ? 1 : 0, this->content_query_.active() ? "ON" : "OFF",
                 this->menu_reply_ ? "ON" : "OFF");
   if (this->bus_ != nullptr)
     ESP_LOGCONFIG(TAG, "  9-bit line: TX marks ENQ 1 / data 0; RX carries the slot as a per-byte fact");

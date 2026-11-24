@@ -8,6 +8,7 @@
 #include "esphome/core/component.h"
 #include "esphome/core/log.h"
 #include "nibe_frame.h"
+#include "nibe_queries.h"
 #include "nibe_wire.h"
 
 #ifdef USE_TEXT_SENSOR
@@ -120,18 +121,16 @@ static constexpr size_t TX_NOTICE_N = 8;     // ISR->task tx-log notifications
 //   FRAME_CLOSE_DELAY_US  sender-closes: our ETX ~+670 us after the master receipt
 //   PUSH_ACK_DELAY_US     pushes are receipt-ACKed at ~15.4 ms; earlier unproven
 //   ANNOUNCE_BURST/BREATH 2 ENQ polls then 2 bare ACKs — emulator policy,
-//                          not a wire fact (hypotheses.md 1)
+//                          not a wire fact (hypotheses.md 1; constants in nibe_queries.h)
 //   NO_POLL_TIMEOUT_S     safety: drop the outbound queue when our polls stop
 static constexpr uint32_t POLL_REPLY_DELAY_US = 2400;
 static constexpr uint32_t GRANT_FRAME_DELAY_US = 160;
 static constexpr uint32_t TX_BYTE_GAP_US = 180;
 static constexpr uint32_t FRAME_CLOSE_DELAY_US = 670;
 static constexpr uint32_t PUSH_ACK_DELAY_US = 15400;
-static constexpr uint8_t ANNOUNCE_BURST = 2;
-static constexpr uint8_t ANNOUNCE_BREATH = 2;
 static constexpr uint32_t NO_POLL_TIMEOUT_S = 30;
 
-class NibeBus : public Component, public ExchangeSink {
+class NibeBus : public Component, public ExchangeSink, public TxSink, public QueryState, public QueueState {
  public:
   void setup() override;
   void loop() override;
@@ -145,7 +144,10 @@ class NibeBus : public Component, public ExchangeSink {
     return this->emulator_intent_ && this->armed_ && this->transmit_capable_();
   }
   /// cmd-0x40 data[1] in request AND key frames: a relaid system value, no protocol meaning (commands.md).
-  void set_request_byte(uint8_t b) { this->request_byte_ = b; }
+  void set_request_byte(uint8_t b) {
+    this->request_byte_ = b;
+    this->content_query_.set_request_byte(b);
+  }
   void set_address(uint16_t address) {
     this->my_addr_ = address;
     this->parser_.set_address(address);
@@ -238,6 +240,15 @@ class NibeBus : public Component, public ExchangeSink {
   /// the transport may drive the line (config `active: true`, resolved in the transport's setup)
   bool IRAM_ATTR transmit_capable_() const { return this->bus_ != nullptr && this->bus_->bus_active(); }
 
+  // ---- queries (task side): TxSink, QueryState, QueueState --------------------
+  bool send(uint8_t cmd, const uint8_t *data, size_t len, bool repeatable) override;
+  bool content_complete() override { return this->rows_seen_ != 0; }
+  bool empty() override;
+  bool has_real() override;
+  uint32_t used() override;
+  /// queue tail after skipping expired repeatables (the peek the poll policy uses)
+  uint32_t effective_tail_();
+
   // ---- engine (ISR-safe) side ----------------------------------------------
   static void IRAM_ATTR rx_byte_trampoline_(void *ctx, uint8_t byte, uint32_t ts, uint8_t flags) {
     static_cast<NibeBus *>(ctx)->rx_byte_(byte, ts, flags);
@@ -251,7 +262,7 @@ class NibeBus : public Component, public ExchangeSink {
 
   bool IRAM_ATTR reply_to_poll_(uint32_t ts, uint8_t reply);  // one control byte as our poll reply
   bool IRAM_ATTR deliver_frame_(uint32_t ts);                  // frame + ETX from the queue head
-  bool queue_frame_(uint8_t cmd, const uint8_t *data, size_t len);  // task side
+  bool queue_frame_(uint8_t cmd, const uint8_t *data, size_t len, bool repeatable);  // task side
   /// Wire mechanics only (ISR): poll pair, grant, close, frame boundaries — never checksums or meaning.
   void IRAM_ATTR track_byte_(uint8_t b, uint32_t ts, bool marked);
   void IRAM_ATTR push_wire_(uint8_t b, uint32_t ts, uint8_t flags);
@@ -318,8 +329,6 @@ class NibeBus : public Component, public ExchangeSink {
   volatile uint8_t reply_ctrl_var_{0};  // RP_CTRL: the byte to transmit
   volatile uint32_t reply_delay_var_{2400};  // the window this reply was armed with
   bool we_own_close_{false};                   // our delivered frame is awaiting its receipt&close
-  uint8_t enq_streak_{0};                      // consecutive ENQ-answered own polls
-  uint8_t bare_owed_{0};                       // bare-ACK polls remaining in the current breath
   volatile uint32_t reply_drops_{0};  // line spoke inside the turnaround window
 
   void IRAM_ATTR arm_reply_(uint8_t kind, uint8_t ctrl_var, uint32_t ts, uint32_t delay_us);
@@ -352,14 +361,10 @@ class NibeBus : public Component, public ExchangeSink {
   // frames queued for delivery on our polls (task produces, ISR consumes)
   struct PendingTx {
     uint8_t len;
+    bool repeatable;  // a request the engine may expire once content arrives
     uint8_t buf[TX_FRAME_MAX - 1];
   };
   PendingTx tx_queue_[TX_QUEUE_N];
-
-  // A queued entry is the content REQUEST: cmd 40, len 9, data[0] = 0x40 — the discriminator (keys use 01/02/04).
-  static bool IRAM_ATTR tx_is_request_(const PendingTx &tx) {
-    return tx.buf[0] == CMD_ANNOUNCE && tx.len == 9 && tx.buf[4] == 0x40;
-  }
   volatile uint32_t txq_head_{0}, txq_tail_{0};
 
   // wire ring: captured bytes (ISR produces, loop parses) — replaces the event ring + arena
@@ -381,6 +386,12 @@ class NibeBus : public Component, public ExchangeSink {
 
   ExchangeParser parser_;
 
+  // outbound commands as units (ADR-0003); the scheduler owns repeat policy and the poll reply
+  ContentRequestQuery content_query_;
+  KeyQuery key_query_;
+  RegisterQuery register_query_;
+  QueryScheduler scheduler_;
+
   // counters
   volatile uint32_t last_own_poll_ms_{0};
   volatile uint32_t polls_own_{0}, polls_other_{0};
@@ -388,8 +399,7 @@ class NibeBus : public Component, public ExchangeSink {
   volatile uint32_t last_gap_us_{0};
 
   // Content-request pump (protocol.md "The display slot"): refills while the master is unready.
-  uint8_t announce_pump_active_{0};  // 0=off, 1=refilling
-  volatile uint8_t rows_seen_{0};    // bit0=row2, bit1=row3, bit2=row4 (from master)
+  volatile uint8_t rows_seen_{0};  // bit0=row2, bit1=row3, bit2=row4 (from master)
 
   // ---- task side state -------------------------------------------------------
   uint32_t last_ev_ts_{0};  // µs stamp of the handled event before this one (log tail)
