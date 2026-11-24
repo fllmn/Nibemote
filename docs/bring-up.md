@@ -53,6 +53,27 @@ this covers what the sim cannot see. Arm last, and keep the physical display unp
 - Clock: the VVM300's clock is still right after a 0xD4 exchange.
 - Steady state: no spontaneous ETX, and the counter summary shows no new anomalies.
 
+## If OTA resets at the first chunk
+
+`make flash-*` connects, handshakes, then dies with `connection reset` or a chunk
+timeout on every retry, and the device log (or the next boot) reports
+`Fault - Cache error`. That is the running image calling flash-resident code from the
+bus ISR while OTA disables the cache — the failure the IRAM discipline exists for.
+It cannot be fixed by retrying, and the new image cannot help because the *old* one
+receives the upload.
+
+Recover by making the ISR quiet for the upload (no RX interrupts → no flash access):
+
+1. Unplug the RS485 connector from the board (or hold the board on its own USB supply
+   with A/B disconnected). The master drops the panel to its backoff poll; the heating
+   keeps running without a display.
+2. `make flash-emulator` (or `make flash-sniffer`).
+3. Reconnect the bus. The master re-detects the panel within one backoff poll.
+
+Alternatively flash over USB-C: `.venv/bin/esphome run configs/nibemote.yaml --device
+/dev/ttyACM0` (find the port with `ls /dev/ttyACM* /dev/ttyUSB*`). After this ticket the
+whole ISR path is verified in IRAM, so OTA works with the bus live again.
+
 ## Phase 1 — capture with the physical display attached (SAFE)
 
 Goal: confirm the open items in docs/hypotheses.md using our own captures

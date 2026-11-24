@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "esphome/core/hal.h"  // IRAM_ATTR (the ISR shares these wire facts)
+
 namespace esphome::nibe {
 
 // --- Wire constants (facts: docs/protocol.md, docs/commands.md) ---
@@ -53,8 +55,9 @@ static constexpr uint8_t CMD_REG_READ = 0x72;
 static constexpr uint8_t REG_PREFIX = 0x05;
 
 /// Wire facts shared by the ISR tracker and the task parser — one spelling, so the two cannot drift.
-static inline bool is_poll_hi(uint8_t b) { return b == 0x00 || b == 0x41; }
-static inline bool is_ctrl_byte(uint8_t b) {
+/// IRAM_ATTR: both callers on the ISR side need these in DRAM code (OTA writes disable the flash cache).
+static inline IRAM_ATTR bool is_poll_hi(uint8_t b) { return b == 0x00 || b == 0x41; }
+static inline IRAM_ATTR bool is_ctrl_byte(uint8_t b) {
   return b == CTRL_ACK || b == CTRL_ENQ || b == CTRL_NAK || b == CTRL_ETX;
 }
 

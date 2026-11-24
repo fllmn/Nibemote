@@ -123,7 +123,7 @@ class RS485Bus final : public Component {
   void debug_dump_recent();
 
   /// µs since the last RX byte (age of the last bus activity; ISR-safe source).
-  uint32_t rx_silence_us() const { return this->now_us_() - this->last_rx_ts_; }
+  uint32_t IRAM_ATTR rx_silence_us() const { return this->now_us_() - this->last_rx_ts_; }
 
   /// the bus's µs clock (esp_timer / steady_clock) — the domain that stamps RX; engines time replies against it.
   uint32_t IRAM_ATTR now_us() const { return this->now_us_(); }
